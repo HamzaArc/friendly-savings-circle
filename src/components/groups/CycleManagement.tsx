@@ -1,0 +1,557 @@
+
+import { useState, useEffect } from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { 
+  Table, TableHeader, TableRow, TableHead, 
+  TableBody, TableCell 
+} from "@/components/ui/table";
+import { 
+  Form, FormField, FormItem, FormLabel, 
+  FormControl, FormMessage, FormDescription 
+} from "@/components/ui/form";
+import { 
+  Select, SelectContent, SelectItem, 
+  SelectTrigger, SelectValue 
+} from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import { useForm } from "react-hook-form";
+import { z } from "zod";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { Calendar, Clock, Check, AlertCircle, Plus, Repeat, UserCheck } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import FadeIn from "@/components/ui/FadeIn";
+import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
+
+interface Member {
+  id: string;
+  name: string;
+  email: string;
+  phone?: string;
+  isAdmin: boolean;
+  joinedAt: string;
+}
+
+interface CyclePayment {
+  memberId: string;
+  memberName: string;
+  status: "pending" | "paid";
+  date?: string;
+}
+
+interface Cycle {
+  id: string;
+  number: number;
+  recipientId: string;
+  recipientName: string;
+  startDate: string;
+  endDate: string;
+  status: "upcoming" | "active" | "completed";
+  payments: CyclePayment[];
+}
+
+interface CycleManagementProps {
+  groupId: string;
+}
+
+const cycleSchema = z.object({
+  recipientId: z.string().min(1, { message: "Please select a recipient" }),
+  startDate: z.string().min(1, { message: "Please enter a start date" }),
+});
+
+type CycleFormValues = z.infer<typeof cycleSchema>;
+
+const CycleManagement = ({ groupId }: CycleManagementProps) => {
+  const [cycles, setCycles] = useState<Cycle[]>([]);
+  const [members, setMembers] = useState<Member[]>([]);
+  const [selectedCycle, setSelectedCycle] = useState<Cycle | null>(null);
+  const [openAddCycle, setOpenAddCycle] = useState(false);
+  const [openCycleDetails, setOpenCycleDetails] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const { toast } = useToast();
+  
+  const form = useForm<CycleFormValues>({
+    resolver: zodResolver(cycleSchema),
+    defaultValues: {
+      recipientId: "",
+      startDate: new Date().toISOString().split('T')[0],
+    },
+  });
+  
+  useEffect(() => {
+    // Load cycles and members from localStorage
+    setTimeout(() => {
+      const storedGroups = JSON.parse(localStorage.getItem("groups") || "[]");
+      const currentGroup = storedGroups.find((g: any) => g.id === groupId);
+      
+      let storedMembers: Member[] = [];
+      let storedCycles: Cycle[] = [];
+      
+      if (currentGroup) {
+        storedMembers = currentGroup.membersList || [];
+        storedCycles = currentGroup.cycles || [];
+      }
+      
+      setMembers(storedMembers);
+      setCycles(storedCycles);
+      setLoading(false);
+    }, 500);
+  }, [groupId]);
+  
+  const saveCycles = (cyclesList: Cycle[]) => {
+    // Save cycles to localStorage
+    const storedGroups = JSON.parse(localStorage.getItem("groups") || "[]");
+    const updatedGroups = storedGroups.map((group: any) => {
+      if (group.id === groupId) {
+        // Find the active cycle, if any
+        const activeCycle = cyclesList.find(cycle => cycle.status === "active");
+        
+        return {
+          ...group,
+          cycles: cyclesList,
+          currentCycle: activeCycle ? activeCycle.number : 0,
+          totalCycles: cyclesList.length,
+        };
+      }
+      return group;
+    });
+    
+    localStorage.setItem("groups", JSON.stringify(updatedGroups));
+  };
+  
+  const onAddCycle = (data: CycleFormValues) => {
+    const recipient = members.find(m => m.id === data.recipientId);
+    
+    if (!recipient) {
+      toast({
+        title: "Error",
+        description: "Selected recipient not found",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    // Calculate 30 days from the start date for the end date
+    const startDate = new Date(data.startDate);
+    const endDate = new Date(startDate);
+    endDate.setDate(endDate.getDate() + 30);
+    
+    // Create payments for each member
+    const payments: CyclePayment[] = members.map(member => ({
+      memberId: member.id,
+      memberName: member.name,
+      status: "pending",
+    }));
+    
+    const newCycle: Cycle = {
+      id: Date.now().toString(),
+      number: cycles.length + 1,
+      recipientId: data.recipientId,
+      recipientName: recipient.name,
+      startDate: startDate.toISOString(),
+      endDate: endDate.toISOString(),
+      status: cycles.length === 0 ? "active" : "upcoming",
+      payments,
+    };
+    
+    const updatedCycles = [...cycles, newCycle];
+    setCycles(updatedCycles);
+    saveCycles(updatedCycles);
+    
+    toast({
+      title: "Cycle added",
+      description: `Cycle ${newCycle.number} has been created with ${recipient.name} as the recipient.`,
+    });
+    
+    setOpenAddCycle(false);
+    form.reset();
+  };
+  
+  const viewCycleDetails = (cycle: Cycle) => {
+    setSelectedCycle(cycle);
+    setOpenCycleDetails(true);
+  };
+  
+  const markPayment = (cycleId: string, memberId: string, status: "pending" | "paid") => {
+    const updatedCycles = cycles.map(cycle => {
+      if (cycle.id === cycleId) {
+        const updatedPayments = cycle.payments.map(payment => {
+          if (payment.memberId === memberId) {
+            return {
+              ...payment,
+              status,
+              date: status === "paid" ? new Date().toISOString() : undefined,
+            };
+          }
+          return payment;
+        });
+        
+        return {
+          ...cycle,
+          payments: updatedPayments,
+        };
+      }
+      return cycle;
+    });
+    
+    setCycles(updatedCycles);
+    saveCycles(updatedCycles);
+    
+    // Update the selected cycle for the dialog
+    if (selectedCycle && selectedCycle.id === cycleId) {
+      const updatedCycle = updatedCycles.find(c => c.id === cycleId) || null;
+      setSelectedCycle(updatedCycle);
+    }
+    
+    toast({
+      title: status === "paid" ? "Payment confirmed" : "Payment reset",
+      description: `Payment has been marked as ${status}.`,
+    });
+  };
+  
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    });
+  };
+  
+  const getPaymentProgress = (cycle: Cycle) => {
+    const totalPayments = cycle.payments.length;
+    const paidPayments = cycle.payments.filter(p => p.status === "paid").length;
+    return Math.round((paidPayments / totalPayments) * 100);
+  };
+  
+  const getNextRecipient = () => {
+    // Get members who haven't been recipients yet
+    const recipientIds = cycles.map(cycle => cycle.recipientId);
+    const availableMembers = members.filter(member => !recipientIds.includes(member.id));
+    
+    if (availableMembers.length > 0) {
+      return availableMembers[0];
+    }
+    
+    // If all members have been recipients, suggest the member who has been a recipient the longest time ago
+    const sortedCycles = [...cycles].sort((a, b) => 
+      new Date(a.startDate).getTime() - new Date(b.startDate).getTime()
+    );
+    
+    const firstRecipientId = sortedCycles[0]?.recipientId;
+    return members.find(member => member.id === firstRecipientId) || members[0];
+  };
+  
+  const completeCycle = (cycleId: string) => {
+    const updatedCycles = cycles.map(cycle => {
+      if (cycle.id === cycleId) {
+        return { ...cycle, status: "completed" };
+      }
+      
+      // Activate the next upcoming cycle if this one is completed
+      if (cycle.status === "upcoming" && cycles.find(c => c.id === cycleId)?.status === "active") {
+        return { ...cycle, status: "active" };
+      }
+      
+      return cycle;
+    });
+    
+    setCycles(updatedCycles);
+    saveCycles(updatedCycles);
+    setOpenCycleDetails(false);
+    
+    toast({
+      title: "Cycle completed",
+      description: "The cycle has been marked as completed and the next cycle has been activated.",
+    });
+  };
+  
+  if (loading) {
+    return (
+      <div className="space-y-4">
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="h-16 bg-muted/30 rounded-xl animate-pulse" />
+        ))}
+      </div>
+    );
+  }
+  
+  const suggestedRecipient = getNextRecipient();
+  
+  return (
+    <FadeIn>
+      <div className="mb-6 flex justify-between items-center">
+        <h3 className="text-lg font-medium">Cycles ({cycles.length})</h3>
+        <Button onClick={() => setOpenAddCycle(true)}>
+          <Plus size={16} className="mr-2" />
+          Create New Cycle
+        </Button>
+      </div>
+      
+      {cycles.length === 0 ? (
+        <Card className="mb-6">
+          <CardContent className="p-6 text-center">
+            <Repeat className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
+            <h3 className="text-lg font-medium mb-2">No cycles yet</h3>
+            <p className="text-muted-foreground mb-6">
+              Create your first cycle to start collecting contributions and assign a recipient.
+            </p>
+            <Button onClick={() => setOpenAddCycle(true)}>
+              <Plus size={16} className="mr-2" />
+              Create First Cycle
+            </Button>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card className="mb-6">
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Cycle</TableHead>
+                  <TableHead>Recipient</TableHead>
+                  <TableHead>Period</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Progress</TableHead>
+                  <TableHead>Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {cycles.map((cycle) => (
+                  <TableRow key={cycle.id}>
+                    <TableCell className="font-medium">Cycle {cycle.number}</TableCell>
+                    <TableCell>{cycle.recipientName}</TableCell>
+                    <TableCell>
+                      {formatDate(cycle.startDate)} - {formatDate(cycle.endDate)}
+                    </TableCell>
+                    <TableCell>
+                      <Badge
+                        variant={cycle.status === "active" ? "default" : 
+                                cycle.status === "completed" ? "outline" : "secondary"}
+                      >
+                        {cycle.status.charAt(0).toUpperCase() + cycle.status.slice(1)}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <Progress value={getPaymentProgress(cycle)} className="h-2 w-20" />
+                        <span className="text-xs text-muted-foreground">
+                          {getPaymentProgress(cycle)}%
+                        </span>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={() => viewCycleDetails(cycle)}
+                      >
+                        View Details
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
+      
+      {/* Add Cycle Dialog */}
+      <Dialog open={openAddCycle} onOpenChange={setOpenAddCycle}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Create New Cycle</DialogTitle>
+          </DialogHeader>
+          
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(onAddCycle)} className="space-y-4">
+              <FormField
+                control={form.control}
+                name="recipientId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Recipient</FormLabel>
+                    <Select 
+                      onValueChange={field.onChange} 
+                      defaultValue={field.value || suggestedRecipient?.id || ""}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select recipient" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {members.map((member) => (
+                          <SelectItem key={member.id} value={member.id}>
+                            {member.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormDescription>
+                      This member will receive all contributions for this cycle.
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              
+              <FormField
+                control={form.control}
+                name="startDate"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Start Date</FormLabel>
+                    <FormControl>
+                      <Input type="date" {...field} />
+                    </FormControl>
+                    <FormDescription>
+                      The cycle will last for 30 days from this date.
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              
+              <DialogFooter>
+                <Button variant="outline" type="button" onClick={() => setOpenAddCycle(false)}>
+                  Cancel
+                </Button>
+                <Button type="submit">Create Cycle</Button>
+              </DialogFooter>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
+      
+      {/* Cycle Details Dialog */}
+      {selectedCycle && (
+        <Dialog open={openCycleDetails} onOpenChange={setOpenCycleDetails}>
+          <DialogContent className="max-w-3xl">
+            <DialogHeader>
+              <DialogTitle className="flex items-center justify-between">
+                <span>Cycle {selectedCycle.number} Details</span>
+                <Badge
+                  variant={selectedCycle.status === "active" ? "default" : 
+                          selectedCycle.status === "completed" ? "outline" : "secondary"}
+                >
+                  {selectedCycle.status.charAt(0).toUpperCase() + selectedCycle.status.slice(1)}
+                </Badge>
+              </DialogTitle>
+            </DialogHeader>
+            
+            <div className="grid gap-4 py-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <h4 className="text-sm font-medium text-muted-foreground mb-1">Recipient</h4>
+                  <div className="font-medium flex items-center gap-2">
+                    <UserCheck size={16} className="text-primary" />
+                    {selectedCycle.recipientName}
+                  </div>
+                </div>
+                <div>
+                  <h4 className="text-sm font-medium text-muted-foreground mb-1">Period</h4>
+                  <div className="font-medium flex items-center gap-2">
+                    <Calendar size={16} className="text-primary" />
+                    {formatDate(selectedCycle.startDate)} - {formatDate(selectedCycle.endDate)}
+                  </div>
+                </div>
+              </div>
+              
+              <div className="mt-4">
+                <h4 className="text-sm font-medium text-muted-foreground mb-3">Payment Progress</h4>
+                <div className="mb-4">
+                  <Progress value={getPaymentProgress(selectedCycle)} className="h-2 mb-2" />
+                  <div className="flex justify-between text-xs text-muted-foreground">
+                    <span>
+                      {selectedCycle.payments.filter(p => p.status === "paid").length} of {selectedCycle.payments.length} payments received
+                    </span>
+                    <span>{getPaymentProgress(selectedCycle)}% complete</span>
+                  </div>
+                </div>
+                
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Member</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {selectedCycle.payments.map((payment) => (
+                      <TableRow key={payment.memberId}>
+                        <TableCell className="font-medium">{payment.memberName}</TableCell>
+                        <TableCell>
+                          <Badge
+                            variant={payment.status === "paid" ? "default" : "outline"}
+                            className={payment.status === "paid" ? 
+                              "bg-green-100 text-green-800 hover:bg-green-100" : 
+                              "text-amber-800"}
+                          >
+                            {payment.status === "paid" ? (
+                              <span className="flex items-center gap-1">
+                                <Check size={14} />
+                                Paid
+                              </span>
+                            ) : (
+                              <span className="flex items-center gap-1">
+                                <Clock size={14} />
+                                Pending
+                              </span>
+                            )}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          {payment.date ? formatDate(payment.date) : "-"}
+                        </TableCell>
+                        <TableCell>
+                          {payment.status === "pending" ? (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => markPayment(selectedCycle.id, payment.memberId, "paid")}
+                            >
+                              Mark as Paid
+                            </Button>
+                          ) : (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => markPayment(selectedCycle.id, payment.memberId, "pending")}
+                            >
+                              Reset
+                            </Button>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+            
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setOpenCycleDetails(false)}>
+                Close
+              </Button>
+              {selectedCycle.status === "active" && (
+                <Button 
+                  onClick={() => completeCycle(selectedCycle.id)}
+                  disabled={getPaymentProgress(selectedCycle) < 100}
+                >
+                  Complete Cycle
+                </Button>
+              )}
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+    </FadeIn>
+  );
+};
+
+export default CycleManagement;

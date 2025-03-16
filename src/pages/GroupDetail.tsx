@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import MembersList from "@/components/groups/MembersList";
 import PaymentHistory from "@/components/groups/PaymentHistory";
+import CycleManagement from "@/components/groups/CycleManagement";
 
 interface Group {
   id: string;
@@ -206,12 +207,17 @@ const GroupDetail = () => {
           </FadeIn>
         </div>
         
-        <Tabs defaultValue="members" className="mb-8">
+        <Tabs defaultValue="cycles" className="mb-8">
           <TabsList className="mb-6">
+            <TabsTrigger value="cycles">Cycles</TabsTrigger>
             <TabsTrigger value="members">Members</TabsTrigger>
             <TabsTrigger value="payments">Payment History</TabsTrigger>
             <TabsTrigger value="settings">Settings</TabsTrigger>
           </TabsList>
+          
+          <TabsContent value="cycles">
+            <CycleManagement groupId={group.id} />
+          </TabsContent>
           
           <TabsContent value="members">
             <MembersList groupId={group.id} />
