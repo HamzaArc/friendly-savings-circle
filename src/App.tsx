@@ -8,6 +8,7 @@ import { useEffect, useState } from "react";
 import Index from "./pages/Index";
 import Dashboard from "./pages/Dashboard";
 import CreateGroup from "./pages/CreateGroup";
+import GroupDetail from "./pages/GroupDetail";
 import NotFound from "./pages/NotFound";
 import OnboardingForm from "./components/onboarding/OnboardingForm";
 import AppShell from "./components/layout/AppShell";
@@ -47,6 +48,7 @@ const App = () => (
           <Route path="/" element={<Index />} />
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/create-group" element={<CreateGroup />} />
+          <Route path="/groups/:id" element={<GroupDetail />} />
           <Route path="/onboarding" element={<Onboarding />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
