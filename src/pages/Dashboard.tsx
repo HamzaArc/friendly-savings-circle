@@ -1,4 +1,3 @@
-
 import { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { PlusCircle } from 'lucide-react';
@@ -89,7 +88,6 @@ const Dashboard = () => {
             {groups.map((group) => {
               const currentCycle = group.current_cycle || 0;
               const totalCycles = group.total_cycles || 0;
-              const cycleProgress = totalCycles > 0 ? (currentCycle / totalCycles) * 100 : 0;
               
               return (
                 <GroupCard
@@ -103,7 +101,6 @@ const Dashboard = () => {
                   contributionFrequency={group.contribution_frequency}
                   currentCycle={currentCycle}
                   totalCycles={totalCycles}
-                  cycleProgress={cycleProgress}
                   nextPaymentDate="2025-04-15" // Provide a default date
                 />
               );
