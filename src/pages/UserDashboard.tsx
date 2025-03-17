@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { 
@@ -12,7 +11,10 @@ import {
   Clock,
   Check,
   ChevronRight,
-  AlertCircle
+  AlertCircle,
+  Award,
+  Trophy,
+  Target
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -20,6 +22,9 @@ import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import FadeIn from "@/components/ui/FadeIn";
 import AppShell from "@/components/layout/AppShell";
+import AchievementBadges from "@/components/gamification/AchievementBadges";
+import Leaderboard from "@/components/gamification/Leaderboard";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 interface Notification {
   id: string;
@@ -360,76 +365,94 @@ const UserDashboard = () => {
           </FadeIn>
         </div>
         
-        <FadeIn delay={400}>
-          <Card>
-            <CardHeader>
-              <CardTitle>Your Groups</CardTitle>
-              <CardDescription>
-                All the savings groups you're participating in
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {groups.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-6 text-center">
-                  <Users className="h-12 w-12 text-muted-foreground mb-4" />
-                  <h3 className="text-lg font-medium mb-2">You haven't joined any groups yet</h3>
-                  <p className="text-muted-foreground mb-4">
-                    Create your first savings group to get started
-                  </p>
-                  <Button asChild>
-                    <Link to="/create-group">Create Your First Group</Link>
-                  </Button>
-                </div>
-              ) : (
-                <div className="divide-y">
-                  {groups.map((group) => (
-                    <div key={group.id} className="py-4 first:pt-0 last:pb-0">
-                      <div className="flex items-center justify-between mb-2">
-                        <h3 className="text-lg font-medium">{group.name}</h3>
-                        <Badge variant={group.currentCycle > 0 ? "default" : "outline"}>
-                          {group.currentCycle > 0 ? "Active" : "Pending"}
-                        </Badge>
-                      </div>
-                      
-                      <div className="flex flex-col sm:flex-row gap-6 mb-4">
-                        <div className="text-sm space-y-1">
-                          <div className="text-muted-foreground">Cycle Progress</div>
-                          <div className="font-medium">
-                            {group.currentCycle || 0} of {group.totalCycles || 0}
-                          </div>
-                          <Progress 
-                            value={group.totalCycles ? (group.currentCycle / group.totalCycles) * 100 : 0} 
-                            className="h-2 w-40"
-                          />
-                        </div>
-                        
-                        <div className="text-sm space-y-1">
-                          <div className="text-muted-foreground">Contribution</div>
-                          <div className="font-medium">${group.contributionAmount}</div>
-                          <div className="text-xs text-muted-foreground">
-                            {group.contributionFrequency}
-                          </div>
-                        </div>
-                        
-                        <div className="text-sm space-y-1">
-                          <div className="text-muted-foreground">Members</div>
-                          <div className="font-medium">{group.members}</div>
-                        </div>
-                      </div>
-                      
-                      <Button asChild variant="outline" size="sm">
-                        <Link to={`/groups/${group.id}`}>
-                          View Group Details
-                          <ChevronRight size={14} className="ml-1" />
-                        </Link>
+        <Tabs defaultValue="groups" className="mb-8">
+          <TabsList className="mb-6">
+            <TabsTrigger value="groups">Your Groups</TabsTrigger>
+            <TabsTrigger value="achievements">Achievements</TabsTrigger>
+            <TabsTrigger value="leaderboard">Leaderboard</TabsTrigger>
+          </TabsList>
+          
+          <TabsContent value="groups">
+            <FadeIn delay={400}>
+              <Card>
+                <CardHeader>
+                  <CardTitle>Your Groups</CardTitle>
+                  <CardDescription>
+                    All the savings groups you're participating in
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {groups.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-6 text-center">
+                      <Users className="h-12 w-12 text-muted-foreground mb-4" />
+                      <h3 className="text-lg font-medium mb-2">You haven't joined any groups yet</h3>
+                      <p className="text-muted-foreground mb-4">
+                        Create your first savings group to get started
+                      </p>
+                      <Button asChild>
+                        <Link to="/create-group">Create Your First Group</Link>
                       </Button>
                     </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </FadeIn>
+                  ) : (
+                    <div className="divide-y">
+                      {groups.map((group) => (
+                        <div key={group.id} className="py-4 first:pt-0 last:pb-0">
+                          <div className="flex items-center justify-between mb-2">
+                            <h3 className="text-lg font-medium">{group.name}</h3>
+                            <Badge variant={group.currentCycle > 0 ? "default" : "outline"}>
+                              {group.currentCycle > 0 ? "Active" : "Pending"}
+                            </Badge>
+                          </div>
+                          
+                          <div className="flex flex-col sm:flex-row gap-6 mb-4">
+                            <div className="text-sm space-y-1">
+                              <div className="text-muted-foreground">Cycle Progress</div>
+                              <div className="font-medium">
+                                {group.currentCycle || 0} of {group.totalCycles || 0}
+                              </div>
+                              <Progress 
+                                value={group.totalCycles ? (group.currentCycle / group.totalCycles) * 100 : 0} 
+                                className="h-2 w-40"
+                              />
+                            </div>
+                            
+                            <div className="text-sm space-y-1">
+                              <div className="text-muted-foreground">Contribution</div>
+                              <div className="font-medium">${group.contributionAmount}</div>
+                              <div className="text-xs text-muted-foreground">
+                                {group.contributionFrequency}
+                              </div>
+                            </div>
+                            
+                            <div className="text-sm space-y-1">
+                              <div className="text-muted-foreground">Members</div>
+                              <div className="font-medium">{group.members}</div>
+                            </div>
+                          </div>
+                          
+                          <Button asChild variant="outline" size="sm">
+                            <Link to={`/groups/${group.id}`}>
+                              View Group Details
+                              <ChevronRight size={14} className="ml-1" />
+                            </Link>
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </FadeIn>
+          </TabsContent>
+          
+          <TabsContent value="achievements">
+            <AchievementBadges userId={user?.id || "1"} />
+          </TabsContent>
+          
+          <TabsContent value="leaderboard">
+            <Leaderboard />
+          </TabsContent>
+        </Tabs>
       </FadeIn>
     </AppShell>
   );

@@ -18,6 +18,7 @@ import Settings from "./pages/Settings";
 import LearnMore from "./pages/LearnMore";
 import Contact from "./pages/Contact";
 import Groups from "./pages/Groups";
+import HelpButton from "./components/onboarding/HelpButton";
 
 const queryClient = new QueryClient();
 
@@ -50,6 +51,9 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
+        <div className="fixed bottom-4 right-4 z-50">
+          <HelpButton />
+        </div>
         <Routes>
           <Route path="/" element={<Index />} />
           <Route path="/dashboard" element={<Dashboard />} />
