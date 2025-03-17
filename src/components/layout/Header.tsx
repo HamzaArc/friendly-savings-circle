@@ -59,7 +59,7 @@ const Header = () => {
           )}
           <Link to="/dashboard" className="flex items-center gap-2">
             <img
-              src="/placeholder.svg"
+              src="/custom-placeholder.svg"
               alt="Logo"
               className="h-6 w-6 rounded-full"
             />
