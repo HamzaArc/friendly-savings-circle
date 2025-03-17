@@ -11,24 +11,29 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/context/AuthContext";
 
 interface Notification {
   id: string;
-  groupId: string;
-  cycleId: string;
-  memberId: string;
+  group_id: string | null;
+  cycle_id: string | null;
+  user_id: string;
   message: string;
-  type: "payment_reminder" | "cycle_completed" | "cycle_started";
-  isRead: boolean;
-  createdAt: string;
+  type: string;
+  is_read: boolean;
+  created_at: string;
 }
 
 const NotificationCenter = () => {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const { toast } = useToast();
+  const { user } = useAuth();
 
   useEffect(() => {
+    if (!user) return;
+    
     // Load notifications initially
     loadNotifications();
     
@@ -36,106 +41,117 @@ const NotificationCenter = () => {
     const interval = setInterval(loadNotifications, 30000);
     
     return () => clearInterval(interval);
-  }, []);
+  }, [user]);
   
-  const loadNotifications = () => {
-    // Get notifications from localStorage
-    const storedNotifications: Notification[] = JSON.parse(localStorage.getItem("notifications") || "[]");
+  const loadNotifications = async () => {
+    if (!user) return;
     
-    // Get current user
-    const user = JSON.parse(localStorage.getItem("user") || "{}");
-    const userId = user.id || "1";
-    
-    // Filter notifications for the current user (memberId is "all" or matches current user)
-    const userNotifications = storedNotifications.filter(notification => 
-      notification.memberId === "all" || notification.memberId === userId
-    );
-    
-    // Sort by date (newest first)
-    userNotifications.sort((a, b) => 
-      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-    );
-    
-    setNotifications(userNotifications);
-    setUnreadCount(userNotifications.filter(n => !n.isRead).length);
-  };
-  
-  const markAsRead = (id: string) => {
-    // Get all notifications
-    const allNotifications: Notification[] = JSON.parse(localStorage.getItem("notifications") || "[]");
-    
-    // Update the read status of the notification
-    const updatedNotifications = allNotifications.map(notification => {
-      if (notification.id === id) {
-        return { ...notification, isRead: true };
+    try {
+      // Get notifications from Supabase
+      const { data, error } = await supabase
+        .from('notifications')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(10);
+      
+      if (error) {
+        throw error;
       }
-      return notification;
-    });
-    
-    // Save back to localStorage
-    localStorage.setItem("notifications", JSON.stringify(updatedNotifications));
-    
-    // Update state
-    setNotifications(prevNotifications => 
-      prevNotifications.map(notification => {
-        if (notification.id === id) {
-          return { ...notification, isRead: true };
-        }
-        return notification;
-      })
-    );
-    
-    setUnreadCount(prevCount => Math.max(0, prevCount - 1));
-  };
-  
-  const markAllAsRead = () => {
-    // Get all notifications
-    const allNotifications: Notification[] = JSON.parse(localStorage.getItem("notifications") || "[]");
-    
-    // Get current user
-    const user = JSON.parse(localStorage.getItem("user") || "{}");
-    const userId = user.id || "1";
-    
-    // Update the read status of all notifications for the current user
-    const updatedNotifications = allNotifications.map(notification => {
-      if (notification.memberId === "all" || notification.memberId === userId) {
-        return { ...notification, isRead: true };
+      
+      if (data) {
+        setNotifications(data);
+        setUnreadCount(data.filter(n => !n.is_read).length);
       }
-      return notification;
-    });
-    
-    // Save back to localStorage
-    localStorage.setItem("notifications", JSON.stringify(updatedNotifications));
-    
-    // Update state
-    setNotifications(prevNotifications => 
-      prevNotifications.map(notification => ({ ...notification, isRead: true }))
-    );
-    
-    setUnreadCount(0);
-    
-    toast({
-      title: "Success",
-      description: "All notifications marked as read",
-    });
+    } catch (error) {
+      console.error('Error loading notifications:', error);
+    }
   };
   
-  const deleteNotification = (id: string) => {
-    // Get all notifications
-    const allNotifications: Notification[] = JSON.parse(localStorage.getItem("notifications") || "[]");
+  const markAsRead = async (id: string) => {
+    if (!user) return;
     
-    // Remove the notification
-    const updatedNotifications = allNotifications.filter(notification => notification.id !== id);
+    try {
+      // Update the read status in Supabase
+      const { error } = await supabase
+        .from('notifications')
+        .update({ is_read: true })
+        .eq('id', id)
+        .eq('user_id', user.id);
+      
+      if (error) {
+        throw error;
+      }
+      
+      // Update local state
+      setNotifications(prevNotifications => 
+        prevNotifications.map(notification => {
+          if (notification.id === id) {
+            return { ...notification, is_read: true };
+          }
+          return notification;
+        })
+      );
+      
+      setUnreadCount(prevCount => Math.max(0, prevCount - 1));
+    } catch (error) {
+      console.error('Error marking notification as read:', error);
+    }
+  };
+  
+  const markAllAsRead = async () => {
+    if (!user || notifications.length === 0) return;
     
-    // Save back to localStorage
-    localStorage.setItem("notifications", JSON.stringify(updatedNotifications));
+    try {
+      // Update all notifications in Supabase
+      const { error } = await supabase
+        .from('notifications')
+        .update({ is_read: true })
+        .eq('user_id', user.id)
+        .in('id', notifications.map(n => n.id));
+      
+      if (error) {
+        throw error;
+      }
+      
+      // Update state
+      setNotifications(prevNotifications => 
+        prevNotifications.map(notification => ({ ...notification, is_read: true }))
+      );
+      
+      setUnreadCount(0);
+      
+      toast({
+        title: "Success",
+        description: "All notifications marked as read",
+      });
+    } catch (error) {
+      console.error('Error marking all notifications as read:', error);
+    }
+  };
+  
+  const deleteNotification = async (id: string) => {
+    if (!user) return;
     
-    // Update state
-    const updatedStateNotifications = notifications.filter(notification => notification.id !== id);
-    setNotifications(updatedStateNotifications);
-    
-    // Update unread count
-    setUnreadCount(updatedStateNotifications.filter(n => !n.isRead).length);
+    try {
+      // Delete from Supabase
+      const { error } = await supabase
+        .from('notifications')
+        .delete()
+        .eq('id', id)
+        .eq('user_id', user.id);
+      
+      if (error) {
+        throw error;
+      }
+      
+      // Update state
+      const updatedNotifications = notifications.filter(n => n.id !== id);
+      setNotifications(updatedNotifications);
+      setUnreadCount(updatedNotifications.filter(n => !n.is_read).length);
+    } catch (error) {
+      console.error('Error deleting notification:', error);
+    }
   };
   
   const formatDate = (dateString: string) => {
@@ -164,6 +180,8 @@ const NotificationCenter = () => {
         return <Check className="h-4 w-4 text-green-500" />;
       case "cycle_started":
         return <Bell className="h-4 w-4 text-blue-500" />;
+      case "payment_received":
+        return <Bell className="h-4 w-4 text-green-500" />;
       default:
         return <Bell className="h-4 w-4 text-primary" />;
     }

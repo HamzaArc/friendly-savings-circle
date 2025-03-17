@@ -44,13 +44,29 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     });
 
     // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       setSession(session);
       setUser(session?.user ?? null);
       setLoading(false);
       
-      // Save user to localStorage for backward compatibility with existing code
       if (session?.user) {
+        // Check if the user has a profile
+        const { data: profile, error } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', session.user.id)
+          .maybeSingle();
+          
+        // If no profile exists, create one
+        if (error || !profile) {
+          await supabase.from('profiles').insert({
+            id: session.user.id,
+            name: session.user.user_metadata.name || session.user.email,
+            email: session.user.email
+          });
+        }
+        
+        // Save user to localStorage
         localStorage.setItem("user", JSON.stringify({
           id: session.user.id,
           name: session.user.user_metadata.name || session.user.email,

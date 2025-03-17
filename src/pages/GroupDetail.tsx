@@ -161,10 +161,8 @@ const GroupDetail = () => {
         variant: "destructive",
       });
       
-      // Check if the error was a "not found" error
-      if (error instanceof Error && error.message.includes("not found")) {
-        navigate("/dashboard");
-      }
+      // Navigate to dashboard on error
+      navigate("/dashboard");
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -264,17 +262,21 @@ const GroupDetail = () => {
       }
       
       if (recipientInfo.recipient_id) {
-        // Get the user's name
-        const { data: userProfile } = await supabase
+        // Get the user's profile
+        const { data: userProfile, error: profileError } = await supabase
           .from('profiles')
           .select('name')
           .eq('id', user.id)
           .single();
           
+        if (profileError) {
+          console.error("Profile fetch error:", profileError);
+        }
+        
         const userName = userProfile?.name || 'A member';
         
         // Create notification
-        await supabase
+        const { error: notifError } = await supabase
           .from('notifications')
           .insert({
             user_id: recipientInfo.recipient_id,
@@ -283,6 +285,10 @@ const GroupDetail = () => {
             type: 'payment_received',
             message: `${userName} has contributed to cycle ${activeCycle.number}`
           });
+          
+        if (notifError) {
+          console.error("Notification creation error:", notifError);
+        }
       }
       
       toast({
@@ -320,7 +326,7 @@ const GroupDetail = () => {
           
         if (cycleError && cycleError.code !== 'PGRST116') {
           console.error("Active cycle check error:", cycleError);
-          throw cycleError;
+          return;
         }
         
         if (!activeCycle) {
@@ -339,7 +345,7 @@ const GroupDetail = () => {
           
         if (paymentError && paymentError.code !== 'PGRST116') {
           console.error("Payment check error:", paymentError);
-          throw paymentError;
+          return;
         }
         
         // Either no payment yet or payment is pending
