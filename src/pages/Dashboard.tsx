@@ -1,149 +1,90 @@
 
-import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { PlusCircle } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { useGroups } from '@/hooks/useGroups';
-import { useRealtime } from '@/hooks/useRealtime';
-import GroupCard from '@/components/dashboard/GroupCard';
-import EmptyState from '@/components/dashboard/EmptyState';
-import FadeIn from '@/components/ui/FadeIn';
-import { useAuth } from '@/contexts/AuthContext';
-import { useGroupMembers } from '@/hooks/useGroups';
+import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
+import { Button } from "@/components/ui/button";
+import { Plus, Settings } from "lucide-react";
+import FadeIn from "@/components/ui/FadeIn";
+import AppShell from "@/components/layout/AppShell";
+import GroupCard from "@/components/dashboard/GroupCard";
+import EmptyState from "@/components/dashboard/EmptyState";
+
+interface Group {
+  id: string;
+  name: string;
+  description: string;
+  members: number;
+  totalMembers: number;
+  currentCycle: number;
+  totalCycles: number;
+  contributionAmount: number;
+  contributionFrequency: string;
+  nextPaymentDate: string;
+}
 
 const Dashboard = () => {
-  const { data: groups = [], isLoading, isError } = useGroups();
-  const { user } = useAuth();
-  const [membersCount, setMembersCount] = useState<{[key: string]: number}>({});
-
-  // Set up realtime subscriptions only if user is logged in
-  useRealtime([
-    { table: 'groups', event: '*' },
-    { table: 'group_members', event: '*', filter: user?.id ? `user_id=eq.${user.id}` : undefined }
-  ], { enabled: !!user?.id });
-
-  // Fetch members count for each group
+  const [loading, setLoading] = useState(true);
+  const [groups, setGroups] = useState<Group[]>([]);
+  
+  // Check if user is logged in, redirect to onboarding if not
   useEffect(() => {
-    if (!groups || groups.length === 0) return;
+    const user = localStorage.getItem("user");
+    if (!user) {
+      window.location.href = "/onboarding";
+      return;
+    }
     
-    const fetchMembersCount = async () => {
-      const counts: {[key: string]: number} = {};
-      
-      for (const group of groups) {
-        try {
-          const { data: members } = await useGroupMembers(group.id);
-          counts[group.id] = members?.length || 0;
-        } catch (error) {
-          console.error(`Error fetching members for group ${group.id}:`, error);
-          counts[group.id] = 0;
-        }
-      }
-      
-      setMembersCount(counts);
-    };
+    // Load groups
+    const storedGroups = localStorage.getItem("groups");
+    if (storedGroups) {
+      setGroups(JSON.parse(storedGroups));
+    }
     
-    fetchMembersCount();
-  }, [groups]);
+    // Simulate loading
+    const timer = setTimeout(() => {
+      setLoading(false);
+    }, 800);
+    
+    return () => clearTimeout(timer);
+  }, []);
 
-  // Calculate next payment date (placeholder logic - should be replaced with actual calculation)
-  const getNextPaymentDate = (group: any) => {
-    // This is a placeholder - in a real app, this would be calculated based on contribution frequency
-    const today = new Date();
-    const nextMonth = new Date(today.setMonth(today.getMonth() + 1));
-    return nextMonth.toISOString().split('T')[0]; // Format as YYYY-MM-DD
-  };
-
-  if (isLoading) {
-    return (
-      <div className="container mx-auto px-4 py-8">
-        <div className="flex justify-between items-center mb-8">
-          <h1 className="text-2xl font-bold">My Groups</h1>
+  return (
+    <AppShell>
+      <FadeIn className="mb-10">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+          <div>
+            <h1 className="text-3xl font-semibold tracking-tight mb-1">Your Savings Groups</h1>
+            <p className="text-muted-foreground">
+              Manage and track all your rotating savings groups
+            </p>
+          </div>
+          
           <Button asChild>
             <Link to="/create-group">
-              <PlusCircle className="h-4 w-4 mr-2" />
-              Create New Group
+              <Plus size={18} className="mr-1.5" />
+              New Group
             </Link>
           </Button>
         </div>
-        
+      </FadeIn>
+      
+      {loading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <Card key={i} className="animate-pulse">
-              <CardHeader>
-                <div className="h-6 bg-muted rounded w-3/4"></div>
-                <div className="h-4 bg-muted rounded w-1/2 mt-2"></div>
-              </CardHeader>
-              <CardContent>
-                <div className="h-4 bg-muted rounded w-full mb-2"></div>
-                <div className="h-4 bg-muted rounded w-full mb-2"></div>
-                <div className="h-4 bg-muted rounded w-2/3"></div>
-              </CardContent>
-            </Card>
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="h-[270px] bg-muted/30 rounded-xl animate-pulse" />
           ))}
         </div>
-      </div>
-    );
-  }
-
-  if (isError) {
-    return (
-      <div className="container mx-auto px-4 py-8">
-        <div className="text-center">
-          <h2 className="text-xl font-semibold text-destructive">Error loading groups</h2>
-          <p className="mt-2">There was a problem fetching your groups. Please try again later.</p>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="flex justify-between items-center mb-8">
-        <h1 className="text-2xl font-bold">My Groups</h1>
-        <Button asChild>
-          <Link to="/create-group">
-            <PlusCircle className="h-4 w-4 mr-2" />
-            Create New Group
-          </Link>
-        </Button>
-      </div>
-
-      {groups.length === 0 ? (
-        <EmptyState 
-          title="No groups yet"
-          description="Create your first group to get started with managing your money pool."
-          buttonText="Create Group"
-          buttonLink="/create-group"
-        />
-      ) : (
+      ) : groups.length > 0 ? (
         <FadeIn>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {groups.map((group) => {
-              const currentCycle = group.current_cycle || 0;
-              const totalCycles = group.total_cycles || 0;
-              const nextPaymentDate = getNextPaymentDate(group);
-              
-              return (
-                <GroupCard
-                  key={group.id}
-                  id={group.id}
-                  name={group.name}
-                  description={group.description || ""}
-                  members={membersCount[group.id] || 0}
-                  totalMembers={group.max_members || 0}
-                  contributionAmount={group.contribution_amount}
-                  contributionFrequency={group.contribution_frequency}
-                  currentCycle={currentCycle}
-                  totalCycles={totalCycles}
-                  nextPaymentDate={nextPaymentDate}
-                />
-              );
-            })}
+            {groups.map((group) => (
+              <GroupCard key={group.id} {...group} />
+            ))}
           </div>
         </FadeIn>
+      ) : (
+        <EmptyState />
       )}
-    </div>
+    </AppShell>
   );
 };
 

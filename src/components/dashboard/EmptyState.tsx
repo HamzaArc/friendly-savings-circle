@@ -1,27 +1,31 @@
 
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
-import { PlusCircle } from "lucide-react";
+import { Plus, Users } from "lucide-react";
+import FadeIn from "../ui/FadeIn";
 
-interface EmptyStateProps {
-  title: string;
-  description: string;
-  buttonText: string;
-  buttonLink: string;
-}
-
-const EmptyState = ({ title, description, buttonText, buttonLink }: EmptyStateProps) => {
+const EmptyState = () => {
   return (
-    <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
-      <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mb-6">
-        <PlusCircle className="w-8 h-8 text-primary" />
+    <FadeIn className="w-full py-16">
+      <div className="mx-auto max-w-lg text-center">
+        <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-primary/10">
+          <Users className="h-10 w-10 text-primary" />
+        </div>
+        
+        <h2 className="mb-2 text-2xl font-semibold tracking-tight">No savings groups yet</h2>
+        
+        <p className="mb-8 text-muted-foreground">
+          Create your first savings group to start collaborating with friends, family, or colleagues and achieve your financial goals together.
+        </p>
+        
+        <Button asChild size="lg" className="px-8 animate-pulse">
+          <Link to="/create-group">
+            <Plus className="mr-2 h-5 w-5" />
+            Create Your First Group
+          </Link>
+        </Button>
       </div>
-      <h3 className="text-xl font-semibold mb-2">{title}</h3>
-      <p className="text-muted-foreground max-w-md mb-8">{description}</p>
-      <Button asChild>
-        <Link to={buttonLink}>{buttonText}</Link>
-      </Button>
-    </div>
+    </FadeIn>
   );
 };
 

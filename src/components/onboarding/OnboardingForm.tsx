@@ -1,21 +1,17 @@
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 import FadeIn from "../ui/FadeIn";
-import { useAuth } from "@/contexts/AuthContext";
-import { AlertCircle } from "lucide-react";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 const OnboardingForm = () => {
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
   const navigate = useNavigate();
-  const { signUp, user } = useAuth();
 
   const [formData, setFormData] = useState({
     name: "",
@@ -24,15 +20,6 @@ const OnboardingForm = () => {
     confirmPassword: "",
   });
 
-  const [error, setError] = useState("");
-
-  // Redirect if already logged in
-  useEffect(() => {
-    if (user) {
-      navigate("/dashboard");
-    }
-  }, [user, navigate]);
-
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
@@ -40,11 +27,14 @@ const OnboardingForm = () => {
 
   const handleContinue = (e: React.FormEvent) => {
     e.preventDefault();
-    setError("");
     
     if (step === 1) {
       if (!formData.name) {
-        setError("Name is required");
+        toast({
+          title: "Name is required",
+          description: "Please enter your name to continue.",
+          variant: "destructive",
+        });
         return;
       }
       
@@ -54,12 +44,20 @@ const OnboardingForm = () => {
     
     if (step === 2) {
       if (!formData.email) {
-        setError("Email is required");
+        toast({
+          title: "Email is required",
+          description: "Please enter your email to continue.",
+          variant: "destructive",
+        });
         return;
       }
       
       if (!/^\S+@\S+\.\S+$/.test(formData.email)) {
-        setError("Please enter a valid email address");
+        toast({
+          title: "Invalid email",
+          description: "Please enter a valid email address.",
+          variant: "destructive",
+        });
         return;
       }
       
@@ -69,17 +67,29 @@ const OnboardingForm = () => {
     
     if (step === 3) {
       if (!formData.password) {
-        setError("Password is required");
+        toast({
+          title: "Password is required",
+          description: "Please create a password to continue.",
+          variant: "destructive",
+        });
         return;
       }
       
-      if (formData.password.length < 6) {
-        setError("Password must be at least 6 characters long");
+      if (formData.password.length < 8) {
+        toast({
+          title: "Password too short",
+          description: "Your password must be at least 8 characters long.",
+          variant: "destructive",
+        });
         return;
       }
       
       if (formData.password !== formData.confirmPassword) {
-        setError("Passwords don't match");
+        toast({
+          title: "Passwords don't match",
+          description: "Please ensure both passwords match.",
+          variant: "destructive",
+        });
         return;
       }
       
@@ -89,27 +99,25 @@ const OnboardingForm = () => {
 
   const handleSubmit = async () => {
     setLoading(true);
-    setError("");
     
-    try {
-      console.log('Attempting signup with:', formData.email, formData.name);
-      // Sign up with Supabase
-      await signUp(formData.email, formData.password, {
-        name: formData.name,
-      });
-      
+    // Simulate API call
+    setTimeout(() => {
+      setLoading(false);
       toast({
         title: "Account created!",
         description: "Welcome to Tontine, " + formData.name + "!",
       });
       
-      // Navigate to dashboard will happen automatically via useEffect when user state updates
-    } catch (err: any) {
-      console.error('Onboarding error:', err);
-      setError(err.message || "Failed to create account");
-    } finally {
-      setLoading(false);
-    }
+      // Store user in localStorage (this would be replaced with proper auth in a real app)
+      localStorage.setItem("user", JSON.stringify({
+        name: formData.name,
+        email: formData.email,
+        // Don't store password in localStorage in a real app
+      }));
+      
+      // Navigate to dashboard
+      navigate("/dashboard");
+    }, 1500);
   };
 
   return (
@@ -152,14 +160,6 @@ const OnboardingForm = () => {
               </div>
             ))}
           </div>
-
-          {error && (
-            <Alert variant="destructive" className="mb-4">
-              <AlertCircle className="h-4 w-4" />
-              <AlertTitle>Error</AlertTitle>
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          )}
 
           <form onSubmit={handleContinue} className="space-y-6">
             {step === 1 && (
