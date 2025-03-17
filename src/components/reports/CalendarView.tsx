@@ -195,22 +195,28 @@ const CalendarView = () => {
           }}
           classNames={{
             day_selected: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground",
-            // Fix: The day property needs to be a string, not a function
-            day: "custom-day-class", // Using a simple string instead of a function
+            day: "custom-day-class", 
           }}
           styles={{
             day: (date) => {
-              // Move the custom styling logic to the styles prop
               const className = getDayClassName(date);
-              if (className) {
+              if (className.includes("bg-amber-100")) {
                 return { 
-                  backgroundColor: className.includes("bg-amber-100") ? "#fef3c7" : 
-                                   className.includes("bg-blue-100") ? "#dbeafe" : 
-                                   className.includes("bg-green-100") ? "#dcfce7" : "",
-                  color: className.includes("text-amber-900") ? "#92400e" : 
-                         className.includes("text-blue-900") ? "#1e3a8a" : 
-                         className.includes("text-green-900") ? "#14532d" : "",
-                  fontWeight: className.includes("font-medium") ? "500" : "normal",
+                  backgroundColor: "#fef3c7",
+                  color: "#92400e",
+                  fontWeight: "500"
+                };
+              } else if (className.includes("bg-blue-100")) {
+                return { 
+                  backgroundColor: "#dbeafe",
+                  color: "#1e3a8a",
+                  fontWeight: "500"
+                };
+              } else if (className.includes("bg-green-100")) {
+                return { 
+                  backgroundColor: "#dcfce7",
+                  color: "#14532d",
+                  fontWeight: "500"
                 };
               }
               return {};
