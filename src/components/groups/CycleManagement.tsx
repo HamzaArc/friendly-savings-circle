@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -18,11 +19,12 @@ import { Input } from "@/components/ui/input";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Calendar, Clock, Check, AlertCircle, Plus, Repeat, UserCheck, Bell } from "lucide-react";
+import { Calendar, Clock, Check, AlertCircle, Plus, Repeat, UserCheck, Bell, RefreshCw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import FadeIn from "@/components/ui/FadeIn";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { addDays, format, isAfter, isBefore, parseISO } from "date-fns";
 
 interface Member {
   id: string;
@@ -47,6 +49,9 @@ interface Cycle {
   recipientName: string;
   startDate: string;
   endDate: string;
+  paymentDate: string;
+  firstReminderDate: string;
+  secondReminderDate: string;
   status: "upcoming" | "active" | "completed";
   payments: CyclePayment[];
 }
@@ -69,6 +74,9 @@ interface CycleManagementProps {
 const cycleSchema = z.object({
   recipientId: z.string().min(1, { message: "Please select a recipient" }),
   startDate: z.string().min(1, { message: "Please enter a start date" }),
+  paymentDate: z.string().min(1, { message: "Please enter a payment date" }),
+  firstReminderDate: z.string().min(1, { message: "Please enter the first reminder date" }),
+  secondReminderDate: z.string().min(1, { message: "Please enter the second reminder date" }),
 });
 
 type CycleFormValues = z.infer<typeof cycleSchema>;
@@ -80,6 +88,7 @@ const CycleManagement = ({ groupId }: CycleManagementProps) => {
   const [openAddCycle, setOpenAddCycle] = useState(false);
   const [openCycleDetails, setOpenCycleDetails] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string>("");
   const [openSendReminder, setOpenSendReminder] = useState(false);
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
@@ -90,10 +99,15 @@ const CycleManagement = ({ groupId }: CycleManagementProps) => {
     defaultValues: {
       recipientId: "",
       startDate: new Date().toISOString().split('T')[0],
+      paymentDate: addDays(new Date(), 30).toISOString().split('T')[0],
+      firstReminderDate: addDays(new Date(), 20).toISOString().split('T')[0],
+      secondReminderDate: addDays(new Date(), 25).toISOString().split('T')[0],
     },
   });
   
-  useEffect(() => {
+  const loadCycleData = () => {
+    setRefreshing(true);
+    
     setTimeout(() => {
       const storedGroups = JSON.parse(localStorage.getItem("groups") || "[]");
       const currentGroup = storedGroups.find((g: any) => g.id === groupId);
@@ -103,7 +117,18 @@ const CycleManagement = ({ groupId }: CycleManagementProps) => {
       
       if (currentGroup) {
         storedMembers = currentGroup.membersList || [];
-        storedCycles = currentGroup.cycles || [];
+        
+        // Handle conversion of old cycle format to new format with reminder dates
+        const cycles = currentGroup.cycles || [];
+        storedCycles = cycles.map((c: any) => {
+          if (!c.paymentDate) {
+            const endDate = new Date(c.endDate);
+            c.paymentDate = c.endDate;
+            c.firstReminderDate = addDays(endDate, -10).toISOString();
+            c.secondReminderDate = addDays(endDate, -5).toISOString();
+          }
+          return c;
+        });
       }
       
       const user = JSON.parse(localStorage.getItem("user") || "{}");
@@ -111,9 +136,110 @@ const CycleManagement = ({ groupId }: CycleManagementProps) => {
       
       setMembers(storedMembers);
       setCycles(storedCycles);
+      
+      // Reset form with dates for new cycle
+      const today = new Date();
+      form.reset({
+        recipientId: form.getValues("recipientId"),
+        startDate: format(today, 'yyyy-MM-dd'),
+        paymentDate: format(addDays(today, 30), 'yyyy-MM-dd'),
+        firstReminderDate: format(addDays(today, 20), 'yyyy-MM-dd'),
+        secondReminderDate: format(addDays(today, 25), 'yyyy-MM-dd'),
+      });
+      
+      // Check for due reminders
+      checkAndSendAutomaticReminders(storedCycles);
+      
       setLoading(false);
+      setRefreshing(false);
     }, 500);
+  };
+  
+  useEffect(() => {
+    loadCycleData();
+    
+    // Set up automatic reminder check every hour
+    const reminderInterval = setInterval(() => {
+      const storedGroups = JSON.parse(localStorage.getItem("groups") || "[]");
+      const currentGroup = storedGroups.find((g: any) => g.id === groupId);
+      
+      if (currentGroup && currentGroup.cycles) {
+        checkAndSendAutomaticReminders(currentGroup.cycles);
+      }
+    }, 3600000); // Every hour
+    
+    return () => clearInterval(reminderInterval);
   }, [groupId]);
+  
+  const checkAndSendAutomaticReminders = (cyclesList: Cycle[]) => {
+    const today = new Date();
+    
+    cyclesList.forEach(cycle => {
+      if (cycle.status !== "active") return;
+      
+      // Check first reminder
+      const firstReminderDate = parseISO(cycle.firstReminderDate);
+      const secondReminderDate = parseISO(cycle.secondReminderDate);
+      
+      // Get pending payments
+      const pendingPayments = cycle.payments.filter(p => p.status === "pending");
+      
+      // First reminder date is today or has passed but is before second reminder
+      if ((isAfter(today, firstReminderDate) || format(today, 'yyyy-MM-dd') === format(firstReminderDate, 'yyyy-MM-dd')) && 
+          isBefore(today, secondReminderDate)) {
+        
+        pendingPayments.forEach(payment => {
+          // Check if we've already sent a reminder today
+          const notificationKey = `reminder1_${cycle.id}_${payment.memberId}_${format(today, 'yyyy-MM-dd')}`;
+          if (localStorage.getItem(notificationKey)) return;
+          
+          // Send first reminder
+          addNotification({
+            groupId,
+            cycleId: cycle.id,
+            memberId: payment.memberId,
+            message: `First reminder: Your payment for cycle ${cycle.number} is due on ${format(parseISO(cycle.paymentDate), 'MMM dd, yyyy')}. Please make your contribution.`,
+            type: "payment_reminder"
+          });
+          
+          // Mark that we've sent this reminder today
+          localStorage.setItem(notificationKey, "sent");
+        });
+      }
+      
+      // Second reminder date is today or has passed but is before payment date
+      if ((isAfter(today, secondReminderDate) || format(today, 'yyyy-MM-dd') === format(secondReminderDate, 'yyyy-MM-dd')) && 
+          isBefore(today, parseISO(cycle.paymentDate))) {
+        
+        pendingPayments.forEach(payment => {
+          // Check if we've already sent a reminder today
+          const notificationKey = `reminder2_${cycle.id}_${payment.memberId}_${format(today, 'yyyy-MM-dd')}`;
+          if (localStorage.getItem(notificationKey)) return;
+          
+          // Send second reminder (more urgent)
+          addNotification({
+            groupId,
+            cycleId: cycle.id,
+            memberId: payment.memberId,
+            message: `URGENT Reminder: Your payment for cycle ${cycle.number} is due on ${format(parseISO(cycle.paymentDate), 'MMM dd, yyyy')}. Please submit your contribution immediately.`,
+            type: "payment_reminder"
+          });
+          
+          // Also notify the recipient
+          addNotification({
+            groupId,
+            cycleId: cycle.id,
+            memberId: cycle.recipientId,
+            message: `Payment reminder was sent to member ${payment.memberName} for cycle ${cycle.number}.`,
+            type: "payment_reminder"
+          });
+          
+          // Mark that we've sent this reminder today
+          localStorage.setItem(notificationKey, "sent");
+        });
+      }
+    });
+  };
   
   const saveCycles = (cyclesList: Cycle[]) => {
     const storedGroups = JSON.parse(localStorage.getItem("groups") || "[]");
@@ -146,7 +272,30 @@ const CycleManagement = ({ groupId }: CycleManagementProps) => {
       return;
     }
     
+    // Validate dates
     const startDate = new Date(data.startDate);
+    const paymentDate = new Date(data.paymentDate);
+    const firstReminderDate = new Date(data.firstReminderDate);
+    const secondReminderDate = new Date(data.secondReminderDate);
+    
+    if (firstReminderDate >= secondReminderDate) {
+      toast({
+        title: "Invalid dates",
+        description: "First reminder must be before the second reminder",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    if (secondReminderDate >= paymentDate) {
+      toast({
+        title: "Invalid dates",
+        description: "Second reminder must be before the payment date",
+        variant: "destructive",
+      });
+      return;
+    }
+    
     const endDate = new Date(startDate);
     endDate.setDate(endDate.getDate() + 30);
     
@@ -163,6 +312,9 @@ const CycleManagement = ({ groupId }: CycleManagementProps) => {
       recipientName: recipient.name,
       startDate: startDate.toISOString(),
       endDate: endDate.toISOString(),
+      paymentDate: paymentDate.toISOString(),
+      firstReminderDate: firstReminderDate.toISOString(),
+      secondReminderDate: secondReminderDate.toISOString(),
       status: cycles.length === 0 ? "active" : "upcoming",
       payments,
     };
@@ -238,6 +390,22 @@ const CycleManagement = ({ groupId }: CycleManagementProps) => {
       title: status === "paid" ? "Payment confirmed" : "Payment reset",
       description: `Payment has been marked as ${status}.`,
     });
+    
+    // Add notification for recipient if payment is marked as paid
+    if (status === "paid") {
+      const cycle = cycles.find(c => c.id === cycleId);
+      const member = members.find(m => m.id === memberId);
+      
+      if (cycle && member) {
+        addNotification({
+          groupId,
+          cycleId,
+          memberId: cycle.recipientId,
+          message: `Payment received from ${member.name} for Cycle ${cycle.number}.`,
+          type: "payment_reminder"
+        });
+      }
+    }
   };
   
   const formatDate = (dateString: string) => {
@@ -374,7 +542,7 @@ const CycleManagement = ({ groupId }: CycleManagementProps) => {
       groupId,
       cycleId,
       memberId,
-      message: `Reminder: Your payment for cycle ${cycle.number} is due. Please make your contribution as soon as possible.`,
+      message: `Reminder: Your payment for cycle ${cycle.number} is due on ${formatDate(cycle.paymentDate)}. Please make your contribution as soon as possible.`,
       type: "payment_reminder"
     });
     
@@ -426,10 +594,22 @@ const CycleManagement = ({ groupId }: CycleManagementProps) => {
     <FadeIn>
       <div className="mb-6 flex justify-between items-center">
         <h3 className="text-lg font-medium">Cycles ({cycles.length})</h3>
-        <Button onClick={() => setOpenAddCycle(true)}>
-          <Plus size={16} className="mr-2" />
-          Create New Cycle
-        </Button>
+        <div className="flex gap-2">
+          <Button 
+            variant="outline"
+            size="sm"
+            onClick={loadCycleData}
+            disabled={refreshing}
+            className="gap-2"
+          >
+            <RefreshCw size={14} className={refreshing ? "animate-spin" : ""} />
+            {refreshing ? "Refreshing..." : "Refresh"}
+          </Button>
+          <Button onClick={() => setOpenAddCycle(true)}>
+            <Plus size={16} className="mr-2" />
+            Create New Cycle
+          </Button>
+        </div>
       </div>
       
       {cycles.length === 0 ? (
@@ -455,6 +635,7 @@ const CycleManagement = ({ groupId }: CycleManagementProps) => {
                   <TableHead>Cycle</TableHead>
                   <TableHead>Recipient</TableHead>
                   <TableHead>Period</TableHead>
+                  <TableHead>Payment Due</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Progress</TableHead>
                   <TableHead>Actions</TableHead>
@@ -474,6 +655,9 @@ const CycleManagement = ({ groupId }: CycleManagementProps) => {
                     </TableCell>
                     <TableCell>
                       {formatDate(cycle.startDate)} - {formatDate(cycle.endDate)}
+                    </TableCell>
+                    <TableCell>
+                      {formatDate(cycle.paymentDate)}
                     </TableCell>
                     <TableCell>
                       <Badge
@@ -534,7 +718,7 @@ const CycleManagement = ({ groupId }: CycleManagementProps) => {
                       <SelectContent>
                         {members.map((member) => (
                           <SelectItem key={member.id} value={member.id}>
-                            {member.name}
+                            {member.name} {member.isAdmin ? "(Admin)" : ""}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -557,7 +741,58 @@ const CycleManagement = ({ groupId }: CycleManagementProps) => {
                       <Input type="date" {...field} />
                     </FormControl>
                     <FormDescription>
-                      The cycle will last for 30 days from this date.
+                      When the cycle begins
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              
+              <FormField
+                control={form.control}
+                name="paymentDate"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Payment Due Date</FormLabel>
+                    <FormControl>
+                      <Input type="date" {...field} />
+                    </FormControl>
+                    <FormDescription>
+                      When all payments are due
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              
+              <FormField
+                control={form.control}
+                name="firstReminderDate"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>First Reminder Date</FormLabel>
+                    <FormControl>
+                      <Input type="date" {...field} />
+                    </FormControl>
+                    <FormDescription>
+                      When to send the first payment reminder
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              
+              <FormField
+                control={form.control}
+                name="secondReminderDate"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Second Reminder Date</FormLabel>
+                    <FormControl>
+                      <Input type="date" {...field} />
+                    </FormControl>
+                    <FormDescription>
+                      When to send the second payment reminder
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
@@ -609,6 +844,27 @@ const CycleManagement = ({ groupId }: CycleManagementProps) => {
                   <div className="font-medium flex items-center gap-2">
                     <Calendar size={16} className="text-primary" />
                     {formatDate(selectedCycle.startDate)} - {formatDate(selectedCycle.endDate)}
+                  </div>
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <h4 className="text-sm font-medium text-muted-foreground mb-1">Payment Due</h4>
+                  <div className="font-medium">
+                    {formatDate(selectedCycle.paymentDate)}
+                  </div>
+                </div>
+                <div>
+                  <h4 className="text-sm font-medium text-muted-foreground mb-1">First Reminder</h4>
+                  <div className="font-medium">
+                    {formatDate(selectedCycle.firstReminderDate || selectedCycle.endDate)}
+                  </div>
+                </div>
+                <div>
+                  <h4 className="text-sm font-medium text-muted-foreground mb-1">Second Reminder</h4>
+                  <div className="font-medium">
+                    {formatDate(selectedCycle.secondReminderDate || selectedCycle.endDate)}
                   </div>
                 </div>
               </div>
@@ -762,4 +1018,3 @@ const CycleManagement = ({ groupId }: CycleManagementProps) => {
 };
 
 export default CycleManagement;
-

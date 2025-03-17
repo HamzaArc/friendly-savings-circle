@@ -1,8 +1,8 @@
 
 import { useState, useEffect } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Users, DollarSign, Calendar, AlertCircle, Shield } from "lucide-react";
+import { ArrowLeft, Users, DollarSign, Calendar, AlertCircle, Shield, RefreshCw } from "lucide-react";
 import FadeIn from "@/components/ui/FadeIn";
 import AppShell from "@/components/layout/AppShell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,9 +10,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
+import GroupNavigation from "@/components/layout/GroupNavigation";
 import MembersList from "@/components/groups/MembersList";
 import PaymentHistory from "@/components/groups/PaymentHistory";
 import CycleManagement from "@/components/groups/CycleManagement";
+import GroupSettings from "@/components/groups/GroupSettings";
 
 interface Group {
   id: string;
@@ -33,16 +35,30 @@ interface Group {
 
 const GroupDetail = () => {
   const { id } = useParams<{ id: string }>();
+  const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const { toast } = useToast();
   const [group, setGroup] = useState<Group | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string>("");
   const [isActiveRecipient, setIsActiveRecipient] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   
-  // Check if user is logged in, redirect to onboarding if not
-  useEffect(() => {
+  // Use tab from URL or default to "cycles"
+  const currentTab = searchParams.get("tab") || "cycles";
+  
+  // Function to change tab
+  const handleTabChange = (value: string) => {
+    searchParams.set("tab", value);
+    setSearchParams(searchParams);
+  };
+  
+  // Load group data function that can be reused for refreshing
+  const loadGroupData = () => {
+    setRefreshing(true);
+    
+    // Check if user is logged in, redirect to onboarding if not
     const user = localStorage.getItem("user");
     if (!user) {
       window.location.href = "/onboarding";
@@ -53,51 +69,54 @@ const GroupDetail = () => {
     setCurrentUserId(userData.id || "1");
     
     // Load group data
-    const loadGroup = () => {
-      try {
-        const storedGroups = JSON.parse(localStorage.getItem("groups") || "[]");
-        const foundGroup = storedGroups.find((g: Group) => g.id === id);
+    try {
+      const storedGroups = JSON.parse(localStorage.getItem("groups") || "[]");
+      const foundGroup = storedGroups.find((g: Group) => g.id === id);
+      
+      if (foundGroup) {
+        setGroup(foundGroup);
         
-        if (foundGroup) {
-          setGroup(foundGroup);
-          
-          // Check if user is admin
-          if (foundGroup.membersList) {
-            const isMemberAdmin = foundGroup.membersList.some(
-              (m: any) => m.id === userData.id && m.isAdmin
-            );
-            setIsAdmin(isMemberAdmin);
-          }
-          
-          // Check if user is active recipient
-          if (foundGroup.cycles) {
-            const activeCycle = foundGroup.cycles.find((c: any) => c.status === "active");
-            if (activeCycle && activeCycle.recipientId === userData.id) {
-              setIsActiveRecipient(true);
-            }
-          }
-        } else {
-          toast({
-            title: "Group not found",
-            description: "The savings group you're looking for doesn't exist.",
-            variant: "destructive",
-          });
-          navigate("/dashboard");
+        // Check if user is admin
+        if (foundGroup.membersList) {
+          const isMemberAdmin = foundGroup.membersList.some(
+            (m: any) => m.id === userData.id && m.isAdmin
+          );
+          setIsAdmin(isMemberAdmin);
         }
-      } catch (error) {
-        console.error("Error loading group:", error);
+        
+        // Check if user is active recipient
+        if (foundGroup.cycles) {
+          const activeCycle = foundGroup.cycles.find((c: any) => c.status === "active");
+          if (activeCycle && activeCycle.recipientId === userData.id) {
+            setIsActiveRecipient(true);
+          }
+        }
+      } else {
         toast({
-          title: "Error loading group",
-          description: "There was an error loading the group data.",
+          title: "Group not found",
+          description: "The savings group you're looking for doesn't exist.",
           variant: "destructive",
         });
-      } finally {
-        setLoading(false);
+        navigate("/dashboard");
       }
-    };
-    
+    } catch (error) {
+      console.error("Error loading group:", error);
+      toast({
+        title: "Error loading group",
+        description: "There was an error loading the group data.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+  
+  // Initial load
+  useEffect(() => {
     // Simulate loading delay
-    setTimeout(loadGroup, 800);
+    const timer = setTimeout(loadGroupData, 800);
+    return () => clearTimeout(timer);
   }, [id, navigate, toast]);
   
   const handleMakePayment = () => {
@@ -137,13 +156,28 @@ const GroupDetail = () => {
         
         localStorage.setItem("groups", JSON.stringify(updatedGroups));
         
-        // Reload group data
-        setGroup(updatedGroups.find((g: Group) => g.id === id) || null);
+        // Reload group data to refresh UI
+        loadGroupData();
         
         toast({
           title: "Payment submitted",
           description: "Your contribution has been recorded.",
         });
+        
+        // Add notification for recipient
+        const notifications = JSON.parse(localStorage.getItem("notifications") || "[]");
+        const newNotification = {
+          id: Date.now().toString(),
+          groupId: id,
+          cycleId: activeCycle.id,
+          memberId: activeCycle.recipientId,
+          message: `Payment received from ${JSON.parse(user || "{}").name || "User"} for Cycle ${activeCycle.number}.`,
+          type: "payment_reminder",
+          isRead: false,
+          createdAt: new Date().toISOString()
+        };
+        
+        localStorage.setItem("notifications", JSON.stringify([...notifications, newNotification]));
       } else {
         toast({
           title: "No active cycle",
@@ -191,15 +225,30 @@ const GroupDetail = () => {
   return (
     <AppShell>
       <FadeIn>
+        <GroupNavigation currentGroupId={id} />
+        
         <div className="mb-8">
-          <Button 
-            variant="ghost" 
-            className="mb-4 -ml-3 text-muted-foreground"
-            onClick={() => navigate("/dashboard")}
-          >
-            <ArrowLeft size={16} className="mr-2" />
-            Back to Dashboard
-          </Button>
+          <div className="flex justify-between items-center mb-4">
+            <Button 
+              variant="ghost" 
+              className="mb-4 -ml-3 text-muted-foreground"
+              onClick={() => navigate("/dashboard")}
+            >
+              <ArrowLeft size={16} className="mr-2" />
+              Back to Dashboard
+            </Button>
+            
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={loadGroupData}
+              disabled={refreshing}
+              className="gap-2"
+            >
+              <RefreshCw size={14} className={refreshing ? "animate-spin" : ""} />
+              {refreshing ? "Refreshing..." : "Refresh"}
+            </Button>
+          </div>
           
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-1">
             <h1 className="text-3xl font-semibold tracking-tight">{group.name}</h1>
@@ -294,7 +343,7 @@ const GroupDetail = () => {
           </FadeIn>
         </div>
         
-        <Tabs defaultValue="cycles" className="mb-8">
+        <Tabs value={currentTab} onValueChange={handleTabChange} className="mb-8">
           <TabsList className="mb-6">
             <TabsTrigger value="cycles">Cycles</TabsTrigger>
             <TabsTrigger value="members">Members</TabsTrigger>
@@ -315,13 +364,7 @@ const GroupDetail = () => {
           </TabsContent>
           
           <TabsContent value="settings">
-            <Card>
-              <CardContent className="pt-6">
-                <p className="text-muted-foreground mb-6">
-                  Group settings will be available in a future update.
-                </p>
-              </CardContent>
-            </Card>
+            <GroupSettings groupId={group.id} />
           </TabsContent>
         </Tabs>
         
