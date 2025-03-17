@@ -155,6 +155,31 @@ const CalendarView = () => {
     return "";
   };
 
+  // Define dayStyles function separately to properly type it
+  const getDayStyle = (date: Date) => {
+    const className = getDayClassName(date);
+    if (className.includes("bg-amber-100")) {
+      return { 
+        backgroundColor: "#fef3c7",
+        color: "#92400e",
+        fontWeight: "500"
+      };
+    } else if (className.includes("bg-blue-100")) {
+      return { 
+        backgroundColor: "#dbeafe",
+        color: "#1e3a8a",
+        fontWeight: "500"
+      };
+    } else if (className.includes("bg-green-100")) {
+      return { 
+        backgroundColor: "#dcfce7",
+        color: "#14532d",
+        fontWeight: "500"
+      };
+    }
+    return {};
+  };
+
   return (
     <div className="grid md:grid-cols-[350px_1fr] gap-6">
       <div>
@@ -198,29 +223,7 @@ const CalendarView = () => {
             day: "custom-day-class", 
           }}
           styles={{
-            day: (date) => {
-              const className = getDayClassName(date);
-              if (className.includes("bg-amber-100")) {
-                return { 
-                  backgroundColor: "#fef3c7",
-                  color: "#92400e",
-                  fontWeight: "500"
-                };
-              } else if (className.includes("bg-blue-100")) {
-                return { 
-                  backgroundColor: "#dbeafe",
-                  color: "#1e3a8a",
-                  fontWeight: "500"
-                };
-              } else if (className.includes("bg-green-100")) {
-                return { 
-                  backgroundColor: "#dcfce7",
-                  color: "#14532d",
-                  fontWeight: "500"
-                };
-              }
-              return {};
-            }
+            day: (date) => getDayStyle(date)
           }}
         />
         <div className="mt-4 flex items-center gap-4 text-sm">
