@@ -1,96 +1,191 @@
 
 import { supabase } from '@/lib/supabase';
+import { toast } from '@/hooks/use-toast';
+import { Profile } from './users';
 
-export const createPayment = async (paymentData: any) => {
-  const { data, error } = await supabase
-    .from('payments')
-    .insert([paymentData])
-    .select()
-    .single();
-  
-  if (error) throw error;
-  return data;
+export type Payment = {
+  id: string;
+  cycle_id: string;
+  payer_id: string;
+  amount: number;
+  status: 'pending' | 'paid';
+  paid_at?: string;
+  created_at?: string;
+  updated_at?: string;
+  payer?: Profile;
+  cycles?: any;
 };
 
-export const getPayments = async (cycleId?: string, userId?: string) => {
-  let query = supabase.from('payments').select(`
-    *,
-    cycles!inner(*),
-    payer:payer_id(*)
-  `);
-  
-  if (cycleId) {
-    query = query.eq('cycle_id', cycleId);
+export const createPayment = async (paymentData: Omit<Payment, 'id' | 'created_at' | 'updated_at'>): Promise<Payment | null> => {
+  try {
+    const { data, error } = await supabase
+      .from('payments')
+      .insert([paymentData])
+      .select()
+      .single();
+    
+    if (error) throw error;
+    
+    toast({
+      title: "Payment created",
+      description: "A new payment has been created."
+    });
+    
+    return data;
+  } catch (error: any) {
+    console.error('Error creating payment:', error.message);
+    toast({
+      title: "Error creating payment",
+      description: error.message,
+      variant: "destructive"
+    });
+    return null;
   }
-  
-  if (userId) {
-    query = query.eq('payer_id', userId);
-  }
-  
-  const { data, error } = await query.order('created_at', { ascending: false });
-  if (error) throw error;
-  return data;
 };
 
-export const getPayment = async (paymentId: string) => {
-  const { data, error } = await supabase
-    .from('payments')
-    .select(`
+export const getPayments = async (cycleId?: string, userId?: string): Promise<Payment[]> => {
+  try {
+    let query = supabase.from('payments').select(`
       *,
       cycles(*),
-      payer:payer_id(*)
-    `)
-    .eq('id', paymentId)
-    .single();
-  
-  if (error) throw error;
-  return data;
+      payer:profiles!payer_id(*)
+    `);
+    
+    if (cycleId) {
+      query = query.eq('cycle_id', cycleId);
+    }
+    
+    if (userId) {
+      query = query.eq('payer_id', userId);
+    }
+    
+    const { data, error } = await query.order('created_at', { ascending: false });
+    
+    if (error) throw error;
+    return data || [];
+  } catch (error: any) {
+    console.error('Error fetching payments:', error.message);
+    return [];
+  }
 };
 
-export const updatePayment = async (paymentId: string, paymentData: any) => {
-  const { data, error } = await supabase
-    .from('payments')
-    .update(paymentData)
-    .eq('id', paymentId)
-    .select()
-    .single();
-  
-  if (error) throw error;
-  return data;
+export const getPayment = async (paymentId: string): Promise<Payment | null> => {
+  try {
+    const { data, error } = await supabase
+      .from('payments')
+      .select(`
+        *,
+        cycles(*),
+        payer:profiles!payer_id(*)
+      `)
+      .eq('id', paymentId)
+      .single();
+    
+    if (error) throw error;
+    return data;
+  } catch (error: any) {
+    console.error('Error fetching payment:', error.message);
+    return null;
+  }
 };
 
-export const deletePayment = async (paymentId: string) => {
-  const { error } = await supabase
-    .from('payments')
-    .delete()
-    .eq('id', paymentId);
-  
-  if (error) throw error;
-  return true;
+export const updatePayment = async (paymentId: string, paymentData: Partial<Payment>): Promise<Payment | null> => {
+  try {
+    const { data, error } = await supabase
+      .from('payments')
+      .update(paymentData)
+      .eq('id', paymentId)
+      .select()
+      .single();
+    
+    if (error) throw error;
+    
+    toast({
+      title: "Payment updated",
+      description: "The payment has been updated successfully."
+    });
+    
+    return data;
+  } catch (error: any) {
+    console.error('Error updating payment:', error.message);
+    toast({
+      title: "Error updating payment",
+      description: error.message,
+      variant: "destructive"
+    });
+    return null;
+  }
 };
 
-export const getUserPaymentsForCycle = async (cycleId: string, userId: string) => {
-  const { data, error } = await supabase
-    .from('payments')
-    .select('*')
-    .eq('cycle_id', cycleId)
-    .eq('payer_id', userId);
-  
-  if (error) throw error;
-  return data;
+export const deletePayment = async (paymentId: string): Promise<boolean> => {
+  try {
+    const { error } = await supabase
+      .from('payments')
+      .delete()
+      .eq('id', paymentId);
+    
+    if (error) throw error;
+    
+    toast({
+      title: "Payment deleted",
+      description: "The payment has been deleted successfully."
+    });
+    
+    return true;
+  } catch (error: any) {
+    console.error('Error deleting payment:', error.message);
+    toast({
+      title: "Error deleting payment",
+      description: error.message,
+      variant: "destructive"
+    });
+    return false;
+  }
 };
 
-export const confirmPayment = async (paymentId: string) => {
-  const { data, error } = await supabase
-    .from('payments')
-    .update({ 
-      status: 'paid',
-      paid_at: new Date().toISOString()
-    })
-    .eq('id', paymentId)
-    .select()
-    .single();
-  
-  if (error) throw error;
-  return data;
+export const getUserPaymentsForCycle = async (cycleId: string, userId: string): Promise<Payment[]> => {
+  try {
+    const { data, error } = await supabase
+      .from('payments')
+      .select('*')
+      .eq('cycle_id', cycleId)
+      .eq('payer_id', userId);
+    
+    if (error) throw error;
+    return data || [];
+  } catch (error: any) {
+    console.error('Error fetching user payments for cycle:', error.message);
+    return [];
+  }
+};
+
+export const confirmPayment = async (paymentId: string): Promise<Payment | null> => {
+  try {
+    const { data, error } = await supabase
+      .from('payments')
+      .update({ 
+        status: 'paid',
+        paid_at: new Date().toISOString()
+      })
+      .eq('id', paymentId)
+      .select()
+      .single();
+    
+    if (error) throw error;
+    
+    toast({
+      title: "Payment confirmed",
+      description: "The payment has been confirmed successfully."
+    });
+    
+    return data;
+  } catch (error: any) {
+    console.error('Error confirming payment:', error.message);
+    toast({
+      title: "Error confirming payment",
+      description: error.message,
+      variant: "destructive"
+    });
+    return null;
+  }
 };

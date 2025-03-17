@@ -6,7 +6,7 @@ const ProtectedRoute = () => {
   const { user, loading } = useAuth();
   const location = useLocation();
 
-  // If the authentication is still loading, show nothing
+  // If the authentication is still loading, show a spinner
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -15,8 +15,9 @@ const ProtectedRoute = () => {
     );
   }
 
-  // If not authenticated, redirect to login
+  // If not authenticated, redirect to login with the intended location
   if (!user) {
+    console.log('No user found, redirecting to login...');
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 

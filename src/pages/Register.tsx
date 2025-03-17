@@ -1,5 +1,5 @@
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,10 +20,11 @@ const Register = () => {
   const [error, setError] = useState("");
 
   // Redirect if already logged in
-  if (user) {
-    navigate("/dashboard");
-    return null;
-  }
+  useEffect(() => {
+    if (user) {
+      navigate("/dashboard");
+    }
+  }, [user, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -45,9 +46,11 @@ const Register = () => {
     }
 
     try {
+      console.log('Attempting signup with:', email, name);
       await signUp(email, password, { name });
-      navigate("/dashboard");
+      // The redirect will happen automatically in the useEffect when user state updates
     } catch (err: any) {
+      console.error('Registration error:', err);
       setError(err.message || "Failed to create account");
     }
   };

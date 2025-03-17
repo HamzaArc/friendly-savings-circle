@@ -3,16 +3,18 @@ import { createContext, useContext, useEffect, useState, ReactNode } from 'react
 import { Session, User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 import { useToast } from '@/hooks/use-toast';
+import { useQueryClient } from '@tanstack/react-query';
+import { Profile } from '@/services/users';
 
 type AuthContextType = {
   session: Session | null;
   user: User | null;
-  profile: any | null;
+  profile: Profile | null;
   loading: boolean;
   signUp: (email: string, password: string, userData: any) => Promise<void>;
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
-  updateProfile: (data: any) => Promise<void>;
+  updateProfile: (data: Partial<Profile>) => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -20,9 +22,10 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
-  const [profile, setProfile] = useState<any | null>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     const fetchSession = async () => {
@@ -56,6 +59,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     // Set up auth state change listener
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
+        console.log('Auth state changed:', event, session?.user?.id);
         setSession(session);
         setUser(session?.user || null);
         
@@ -74,13 +78,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         } else {
           setProfile(null);
         }
+        
+        // Invalidate all queries when auth state changes
+        if (event === 'SIGNED_IN' || event === 'SIGNED_OUT') {
+          queryClient.invalidateQueries();
+        }
       }
     );
 
     return () => {
       subscription.unsubscribe();
     };
-  }, []);
+  }, [queryClient]);
 
   const signUp = async (email: string, password: string, userData: any) => {
     try {
@@ -94,6 +103,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       });
 
       if (error) throw error;
+
+      // The profile will be created automatically via the database trigger
 
       toast({
         title: "Account created!",
@@ -126,6 +137,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         description: "You have successfully signed in.",
       });
     } catch (error: any) {
+      console.error("Sign in error:", error);
       toast({
         title: "Error signing in",
         description: error.message,
@@ -158,14 +170,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const updateProfile = async (data: any) => {
+  const updateProfile = async (data: Partial<Profile>) => {
     try {
       if (!user) throw new Error("No user logged in");
       
       setLoading(true);
       const { error } = await supabase
         .from('profiles')
-        .upsert({ id: user.id, ...data })
+        .update(data)
         .eq('id', user.id);
       
       if (error) throw error;

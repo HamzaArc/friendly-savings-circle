@@ -1,5 +1,5 @@
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,7 +15,7 @@ const OnboardingForm = () => {
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
   const navigate = useNavigate();
-  const { signUp } = useAuth();
+  const { signUp, user } = useAuth();
 
   const [formData, setFormData] = useState({
     name: "",
@@ -25,6 +25,13 @@ const OnboardingForm = () => {
   });
 
   const [error, setError] = useState("");
+
+  // Redirect if already logged in
+  useEffect(() => {
+    if (user) {
+      navigate("/dashboard");
+    }
+  }, [user, navigate]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -85,6 +92,7 @@ const OnboardingForm = () => {
     setError("");
     
     try {
+      console.log('Attempting signup with:', formData.email, formData.name);
       // Sign up with Supabase
       await signUp(formData.email, formData.password, {
         name: formData.name,
@@ -95,9 +103,9 @@ const OnboardingForm = () => {
         description: "Welcome to Tontine, " + formData.name + "!",
       });
       
-      // Navigate to dashboard
-      navigate("/dashboard");
+      // Navigate to dashboard will happen automatically via useEffect when user state updates
     } catch (err: any) {
+      console.error('Onboarding error:', err);
       setError(err.message || "Failed to create account");
     } finally {
       setLoading(false);

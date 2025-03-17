@@ -1,5 +1,5 @@
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,10 +19,12 @@ const Login = () => {
   const [error, setError] = useState("");
 
   // Redirect if already logged in
-  if (user) {
-    navigate("/dashboard");
-    return null;
-  }
+  useEffect(() => {
+    if (user) {
+      const from = location.state?.from?.pathname || "/dashboard";
+      navigate(from, { replace: true });
+    }
+  }, [user, navigate, location.state]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -34,12 +36,12 @@ const Login = () => {
     }
 
     try {
+      console.log('Attempting sign in with:', email);
       await signIn(email, password);
       
-      // Redirect to the page they were trying to access or to dashboard
-      const from = location.state?.from?.pathname || "/dashboard";
-      navigate(from, { replace: true });
+      // The redirect will happen automatically in the useEffect when user state updates
     } catch (err: any) {
+      console.error('Login error:', err);
       setError(err.message || "Failed to sign in");
     }
   };
