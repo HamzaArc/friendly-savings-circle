@@ -70,6 +70,8 @@ const GroupForm = () => {
     setLoading(true);
     
     try {
+      console.log("Creating group with user ID:", user.id);
+      
       // Create new group in Supabase
       const { data: groupData, error: groupError } = await supabase
         .from('groups')
@@ -85,7 +87,16 @@ const GroupForm = () => {
         .select()
         .single();
       
-      if (groupError) throw groupError;
+      if (groupError) {
+        console.error("Group creation error:", groupError);
+        throw groupError;
+      }
+      
+      if (!groupData || !groupData.id) {
+        throw new Error("Group was created but no data was returned");
+      }
+      
+      console.log("Group created successfully:", groupData);
       
       // Add the creator as a member and admin
       const { error: memberError } = await supabase
@@ -96,7 +107,10 @@ const GroupForm = () => {
           is_admin: true
         });
       
-      if (memberError) throw memberError;
+      if (memberError) {
+        console.error("Error adding member:", memberError);
+        throw memberError;
+      }
       
       toast({
         title: "Group created!",

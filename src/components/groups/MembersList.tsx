@@ -69,12 +69,14 @@ const MembersList = ({ groupId }: MembersListProps) => {
           .single();
           
         if (adminError && adminError.code !== 'PGRST116') {
+          console.error("Admin check error:", adminError);
           throw adminError;
         }
         
         setIsAdmin(adminCheck?.is_admin || false);
+        console.log("Is admin:", adminCheck?.is_admin);
         
-        // Fetch members of this group with profile data
+        // Fetch members of this group
         const { data: memberships, error: membershipError } = await supabase
           .from('group_members')
           .select(`
@@ -85,7 +87,12 @@ const MembersList = ({ groupId }: MembersListProps) => {
           `)
           .eq('group_id', groupId);
           
-        if (membershipError) throw membershipError;
+        if (membershipError) {
+          console.error("Membership fetch error:", membershipError);
+          throw membershipError;
+        }
+        
+        console.log("Memberships found:", memberships);
         
         // Process the memberships data and fetch profile info separately
         if (memberships && memberships.length > 0) {
@@ -98,7 +105,12 @@ const MembersList = ({ groupId }: MembersListProps) => {
             .select('id, name, email')
             .in('id', userIds);
             
-          if (profilesError) throw profilesError;
+          if (profilesError) {
+            console.error("Profiles fetch error:", profilesError);
+            throw profilesError;
+          }
+          
+          console.log("Profiles found:", profiles);
           
           // Create a map of user IDs to profiles for easier lookup
           const profileMap = new Map();
@@ -161,22 +173,38 @@ const MembersList = ({ groupId }: MembersListProps) => {
         .eq('email', data.email)
         .maybeSingle();
         
-      if (userError && userError.code !== 'PGRST116') throw userError;
+      if (userError && userError.code !== 'PGRST116') {
+        console.error("User check error:", userError);
+        throw userError;
+      }
       
       let userId = existingUser?.id;
       
       if (!userId) {
         // In a real app, you would send an invite email
-        // For now, we'll create a placeholder user
+        // For now, we'll create a placeholder user profile
         toast({
           title: "User not found",
           description: "This email is not registered in the system. An invitation will be sent.",
         });
         
-        // We'll skip adding the member for now
-        setOpenAddMember(false);
-        form.reset();
-        return;
+        // Create a placeholder profile
+        const { data: newProfile, error: profileError } = await supabase
+          .from('profiles')
+          .insert({
+            id: crypto.randomUUID(), // Generate a UUID for the user
+            name: data.name,
+            email: data.email
+          })
+          .select()
+          .single();
+          
+        if (profileError) {
+          console.error("Profile creation error:", profileError);
+          throw profileError;
+        }
+        
+        userId = newProfile.id;
       }
       
       // Check if user is already a member
@@ -187,7 +215,10 @@ const MembersList = ({ groupId }: MembersListProps) => {
         .eq('user_id', userId)
         .maybeSingle();
         
-      if (memberCheckError && memberCheckError.code !== 'PGRST116') throw memberCheckError;
+      if (memberCheckError && memberCheckError.code !== 'PGRST116') {
+        console.error("Member check error:", memberCheckError);
+        throw memberCheckError;
+      }
       
       if (existingMember) {
         toast({
@@ -201,19 +232,24 @@ const MembersList = ({ groupId }: MembersListProps) => {
       }
       
       // Add member to group
-      const { error: addError } = await supabase
+      const { data: newMember, error: addError } = await supabase
         .from('group_members')
         .insert({
           group_id: groupId,
           user_id: userId,
           is_admin: false
-        });
+        })
+        .select()
+        .single();
         
-      if (addError) throw addError;
+      if (addError) {
+        console.error("Member addition error:", addError);
+        throw addError;
+      }
       
-      // Add new member to the list without refetching
-      const newMember: Member = {
-        id: crypto.randomUUID(), // Temporary ID until we refresh
+      // Add new member to the list
+      const newMemberData: Member = {
+        id: newMember.id,
         name: data.name,
         email: data.email,
         phone: data.phone,
@@ -221,7 +257,7 @@ const MembersList = ({ groupId }: MembersListProps) => {
         joinedAt: new Date().toISOString()
       };
       
-      setMembers(prev => [...prev, newMember]);
+      setMembers(prev => [...prev, newMemberData]);
       
       toast({
         title: "Member added",

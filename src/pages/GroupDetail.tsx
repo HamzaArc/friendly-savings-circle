@@ -15,6 +15,8 @@ import MembersList from "@/components/groups/MembersList";
 import PaymentHistory from "@/components/groups/PaymentHistory";
 import CycleManagement from "@/components/groups/CycleManagement";
 import GroupSettings from "@/components/groups/GroupSettings";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/context/AuthContext";
 
 interface Group {
   id: string;
@@ -28,9 +30,6 @@ interface Group {
   contributionFrequency: string;
   nextPaymentDate: string;
   createdAt: string;
-  maxMembers: number;
-  cycles?: any[];
-  membersList?: any[];
 }
 
 const GroupDetail = () => {
@@ -41,9 +40,9 @@ const GroupDetail = () => {
   const [group, setGroup] = useState<Group | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [currentUserId, setCurrentUserId] = useState<string>("");
   const [isActiveRecipient, setIsActiveRecipient] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  const { user } = useAuth();
   
   // Use tab from URL or default to "cycles"
   const currentTab = searchParams.get("tab") || "cycles";
@@ -55,50 +54,105 @@ const GroupDetail = () => {
   };
   
   // Load group data function that can be reused for refreshing
-  const loadGroupData = () => {
+  const loadGroupData = async () => {
+    if (!id || !user) return;
+    
+    setLoading(true);
     setRefreshing(true);
     
-    // Check if user is logged in, redirect to onboarding if not
-    const user = localStorage.getItem("user");
-    if (!user) {
-      window.location.href = "/onboarding";
-      return;
-    }
-    
-    const userData = JSON.parse(user);
-    setCurrentUserId(userData.id || "1");
-    
-    // Load group data
     try {
-      const storedGroups = JSON.parse(localStorage.getItem("groups") || "[]");
-      const foundGroup = storedGroups.find((g: Group) => g.id === id);
+      console.log("Loading group data for:", id);
       
-      if (foundGroup) {
-        setGroup(foundGroup);
+      // Check if user is member of this group
+      const { data: membership, error: membershipError } = await supabase
+        .from('group_members')
+        .select('is_admin')
+        .eq('group_id', id)
+        .eq('user_id', user.id)
+        .maybeSingle();
         
-        // Check if user is admin
-        if (foundGroup.membersList) {
-          const isMemberAdmin = foundGroup.membersList.some(
-            (m: any) => m.id === userData.id && m.isAdmin
-          );
-          setIsAdmin(isMemberAdmin);
-        }
-        
-        // Check if user is active recipient
-        if (foundGroup.cycles) {
-          const activeCycle = foundGroup.cycles.find((c: any) => c.status === "active");
-          if (activeCycle && activeCycle.recipientId === userData.id) {
-            setIsActiveRecipient(true);
-          }
-        }
-      } else {
+      if (membershipError && membershipError.code !== 'PGRST116') {
+        console.error("Membership check error:", membershipError);
+        throw membershipError;
+      }
+      
+      if (!membership) {
         toast({
-          title: "Group not found",
-          description: "The savings group you're looking for doesn't exist.",
+          title: "Access denied",
+          description: "You are not a member of this group.",
           variant: "destructive",
         });
         navigate("/dashboard");
+        return;
       }
+      
+      setIsAdmin(membership.is_admin || false);
+      
+      // Fetch group details
+      const { data: groupData, error: groupError } = await supabase
+        .from('groups')
+        .select(`
+          id,
+          name,
+          description,
+          contribution_amount,
+          contribution_frequency,
+          max_members,
+          current_cycle,
+          total_cycles,
+          next_payment_date,
+          created_at
+        `)
+        .eq('id', id)
+        .single();
+        
+      if (groupError) {
+        console.error("Group fetch error:", groupError);
+        throw groupError;
+      }
+      
+      // Get member count
+      const { count: memberCount, error: countError } = await supabase
+        .from('group_members')
+        .select('id', { count: 'exact', head: true })
+        .eq('group_id', id);
+        
+      if (countError) {
+        console.error("Member count error:", countError);
+        throw countError;
+      }
+      
+      // Check if user is current active recipient
+      const { data: activeCycle, error: cycleError } = await supabase
+        .from('cycles')
+        .select('recipient_id')
+        .eq('group_id', id)
+        .eq('status', 'active')
+        .maybeSingle();
+        
+      if (cycleError && cycleError.code !== 'PGRST116') {
+        console.error("Cycle check error:", cycleError);
+        throw cycleError;
+      }
+      
+      setIsActiveRecipient(activeCycle?.recipient_id === user.id);
+      
+      // Format and set group data
+      const formattedGroup: Group = {
+        id: groupData.id,
+        name: groupData.name,
+        description: groupData.description || '',
+        members: memberCount || 0,
+        totalMembers: groupData.max_members,
+        currentCycle: groupData.current_cycle || 0,
+        totalCycles: groupData.total_cycles || groupData.max_members,
+        contributionAmount: Number(groupData.contribution_amount),
+        contributionFrequency: groupData.contribution_frequency,
+        nextPaymentDate: groupData.next_payment_date || new Date().toISOString(),
+        createdAt: groupData.created_at
+      };
+      
+      setGroup(formattedGroup);
     } catch (error) {
       console.error("Error loading group:", error);
       toast({
@@ -106,6 +160,11 @@ const GroupDetail = () => {
         description: "There was an error loading the group data.",
         variant: "destructive",
       });
+      
+      // Check if the error was a "not found" error
+      if (error instanceof Error && error.message.includes("not found")) {
+        navigate("/dashboard");
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -114,79 +173,184 @@ const GroupDetail = () => {
   
   // Initial load
   useEffect(() => {
-    // Simulate loading delay
-    const timer = setTimeout(loadGroupData, 800);
-    return () => clearTimeout(timer);
-  }, [id, navigate, toast]);
+    if (user) {
+      loadGroupData();
+    }
+  }, [id, user]);
   
-  const handleMakePayment = () => {
-    // Find active cycle
-    if (group?.cycles) {
-      const activeCycle = group.cycles.find(c => c.status === "active");
-      if (activeCycle) {
-        // Check if user has already paid
-        const userPayment = activeCycle.payments.find(p => p.memberId === currentUserId);
-        if (userPayment && userPayment.status === "paid") {
-          toast({
-            title: "Already paid",
-            description: "You have already made your contribution for this cycle.",
+  const handleMakePayment = async () => {
+    if (!id || !user || !group) return;
+    
+    try {
+      // Get active cycle
+      const { data: activeCycle, error: cycleError } = await supabase
+        .from('cycles')
+        .select('id, number')
+        .eq('group_id', id)
+        .eq('status', 'active')
+        .single();
+        
+      if (cycleError) {
+        console.error("Cycle fetch error:", cycleError);
+        throw cycleError;
+      }
+      
+      // Check if user has already paid for this cycle
+      const { data: existingPayment, error: paymentCheckError } = await supabase
+        .from('payments')
+        .select('id, status')
+        .eq('group_id', id)
+        .eq('cycle_id', activeCycle.id)
+        .eq('user_id', user.id)
+        .maybeSingle();
+        
+      if (paymentCheckError && paymentCheckError.code !== 'PGRST116') {
+        console.error("Payment check error:", paymentCheckError);
+        throw paymentCheckError;
+      }
+      
+      if (existingPayment && existingPayment.status === 'paid') {
+        toast({
+          title: "Already paid",
+          description: "You have already made your contribution for this cycle.",
+        });
+        return;
+      }
+      
+      // Create or update payment
+      if (existingPayment) {
+        // Update existing payment
+        const { error: updateError } = await supabase
+          .from('payments')
+          .update({
+            status: 'paid',
+            payment_date: new Date().toISOString()
+          })
+          .eq('id', existingPayment.id);
+          
+        if (updateError) {
+          console.error("Payment update error:", updateError);
+          throw updateError;
+        }
+      } else {
+        // Create new payment
+        const { error: createError } = await supabase
+          .from('payments')
+          .insert({
+            group_id: id,
+            cycle_id: activeCycle.id,
+            user_id: user.id,
+            amount: group.contributionAmount,
+            status: 'paid',
+            payment_date: new Date().toISOString()
           });
+          
+        if (createError) {
+          console.error("Payment creation error:", createError);
+          throw createError;
+        }
+      }
+      
+      // Create notification for recipient
+      const { data: recipientInfo, error: recipientError } = await supabase
+        .from('cycles')
+        .select('recipient_id')
+        .eq('id', activeCycle.id)
+        .single();
+        
+      if (recipientError) {
+        console.error("Recipient fetch error:", recipientError);
+        throw recipientError;
+      }
+      
+      if (recipientInfo.recipient_id) {
+        // Get the user's name
+        const { data: userProfile } = await supabase
+          .from('profiles')
+          .select('name')
+          .eq('id', user.id)
+          .single();
+          
+        const userName = userProfile?.name || 'A member';
+        
+        // Create notification
+        await supabase
+          .from('notifications')
+          .insert({
+            user_id: recipientInfo.recipient_id,
+            group_id: id,
+            cycle_id: activeCycle.id,
+            type: 'payment_received',
+            message: `${userName} has contributed to cycle ${activeCycle.number}`
+          });
+      }
+      
+      toast({
+        title: "Payment submitted",
+        description: "Your contribution has been recorded.",
+      });
+      
+      // Refresh to show updated state
+      loadGroupData();
+    } catch (error) {
+      console.error("Error making payment:", error);
+      toast({
+        title: "Error making payment",
+        description: "There was an error processing your payment. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+  
+  // Check if user has a pending payment for the active cycle
+  const [hasActivePayment, setHasActivePayment] = useState(false);
+  
+  useEffect(() => {
+    if (!id || !user) return;
+    
+    const checkActiveCycle = async () => {
+      try {
+        // Get active cycle
+        const { data: activeCycle, error: cycleError } = await supabase
+          .from('cycles')
+          .select('id')
+          .eq('group_id', id)
+          .eq('status', 'active')
+          .maybeSingle();
+          
+        if (cycleError && cycleError.code !== 'PGRST116') {
+          console.error("Active cycle check error:", cycleError);
+          throw cycleError;
+        }
+        
+        if (!activeCycle) {
+          setHasActivePayment(false);
           return;
         }
         
-        // Update the user's payment
-        const updatedGroups = JSON.parse(localStorage.getItem("groups") || "[]").map((g: Group) => {
-          if (g.id === id) {
-            const updatedCycles = g.cycles?.map(c => {
-              if (c.id === activeCycle.id) {
-                const updatedPayments = c.payments.map(p => {
-                  if (p.memberId === currentUserId) {
-                    return { ...p, status: "paid", date: new Date().toISOString() };
-                  }
-                  return p;
-                });
-                return { ...c, payments: updatedPayments };
-              }
-              return c;
-            });
-            return { ...g, cycles: updatedCycles };
-          }
-          return g;
-        });
+        // Check for pending payment
+        const { data: payment, error: paymentError } = await supabase
+          .from('payments')
+          .select('status')
+          .eq('group_id', id)
+          .eq('cycle_id', activeCycle.id)
+          .eq('user_id', user.id)
+          .maybeSingle();
+          
+        if (paymentError && paymentError.code !== 'PGRST116') {
+          console.error("Payment check error:", paymentError);
+          throw paymentError;
+        }
         
-        localStorage.setItem("groups", JSON.stringify(updatedGroups));
-        
-        // Reload group data to refresh UI
-        loadGroupData();
-        
-        toast({
-          title: "Payment submitted",
-          description: "Your contribution has been recorded.",
-        });
-        
-        // Add notification for recipient
-        const notifications = JSON.parse(localStorage.getItem("notifications") || "[]");
-        const currentUser = JSON.parse(localStorage.getItem("user") || "{}");
-        const newNotification = {
-          id: Date.now().toString(),
-          groupId: id,
-          cycleId: activeCycle.id,
-          memberId: activeCycle.recipientId,
-          message: `Payment received from ${currentUser.name || "User"} for Cycle ${activeCycle.number}.`,
-          type: "payment_reminder",
-          isRead: false,
-          createdAt: new Date().toISOString()
-        };
-        
-        localStorage.setItem("notifications", JSON.stringify([...notifications, newNotification]));
-      } else {
-        toast({
-          title: "No active cycle",
-          description: "There is no active cycle to contribute to.",
-        });
+        // Either no payment yet or payment is pending
+        setHasActivePayment(!payment || payment.status === 'pending');
+      } catch (error) {
+        console.error("Error checking for active cycle:", error);
       }
-    }
-  };
+    };
+    
+    checkActiveCycle();
+  }, [id, user, refreshing]);
   
   if (loading) {
     return (
@@ -217,11 +381,6 @@ const GroupDetail = () => {
   }
   
   const progressPercentage = (group.currentCycle / group.totalCycles) * 100;
-  const hasActivePayment = group.cycles?.some(c => 
-    c.status === "active" && c.payments.some(p => 
-      p.memberId === currentUserId && p.status === "pending"
-    )
-  );
   
   return (
     <AppShell>
@@ -319,7 +478,7 @@ const GroupDetail = () => {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold mb-2">
-                  {group.members} of {group.maxMembers}
+                  {group.members} of {group.totalMembers}
                 </div>
                 <div className="flex gap-2 items-center">
                   <div className="flex -space-x-2">

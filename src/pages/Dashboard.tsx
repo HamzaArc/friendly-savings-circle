@@ -37,18 +37,25 @@ const Dashboard = () => {
       setLoading(true);
       
       try {
-        // Fetch groups where the user is a member
+        console.log("Fetching groups for user:", user.id);
+        
+        // First fetch group memberships
         const { data: memberships, error: membershipError } = await supabase
           .from('group_members')
           .select('group_id')
           .eq('user_id', user.id);
           
-        if (membershipError) throw membershipError;
+        if (membershipError) {
+          console.error("Membership fetch error:", membershipError);
+          throw membershipError;
+        }
+        
+        console.log("Memberships found:", memberships);
         
         if (memberships && memberships.length > 0) {
           const groupIds = memberships.map(m => m.group_id);
           
-          // Fetch the actual group data
+          // Fetch the group data
           const { data: groupsData, error: groupsError } = await supabase
             .from('groups')
             .select(`
@@ -64,7 +71,12 @@ const Dashboard = () => {
             `)
             .in('id', groupIds);
             
-          if (groupsError) throw groupsError;
+          if (groupsError) {
+            console.error("Groups fetch error:", groupsError);
+            throw groupsError;
+          }
+          
+          console.log("Groups data:", groupsData);
           
           // For each group, get the member count
           const groupsWithMembers = await Promise.all(
@@ -74,7 +86,10 @@ const Dashboard = () => {
                 .select('id', { count: 'exact', head: true })
                 .eq('group_id', group.id);
                 
-              if (countError) throw countError;
+              if (countError) {
+                console.error("Member count error:", countError);
+                throw countError;
+              }
               
               return {
                 id: group.id,
@@ -93,6 +108,7 @@ const Dashboard = () => {
           
           setGroups(groupsWithMembers);
         } else {
+          console.log("No memberships found");
           setGroups([]);
         }
       } catch (error) {

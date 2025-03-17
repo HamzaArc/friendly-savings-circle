@@ -3,1013 +3,704 @@ import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { 
-  Table, TableHeader, TableRow, TableHead, 
-  TableBody, TableCell 
-} from "@/components/ui/table";
-import { 
-  Form, FormField, FormItem, FormLabel, 
-  FormControl, FormMessage, FormDescription 
-} from "@/components/ui/form";
-import { 
-  Select, SelectContent, SelectItem, 
-  SelectTrigger, SelectValue 
-} from "@/components/ui/select";
-import { Input } from "@/components/ui/input";
-import { useForm } from "react-hook-form";
-import { z } from "zod";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { Calendar, Clock, Check, AlertCircle, Plus, Repeat, UserCheck, Bell, RefreshCw } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
-import FadeIn from "@/components/ui/FadeIn";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Calendar as CalendarIcon, Plus, MoreHorizontal, CheckCircle, Clock, CircleDollarSign, User } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
-import { addDays, format, isAfter, isBefore, parseISO } from "date-fns";
-
-interface Member {
-  id: string;
-  name: string;
-  email: string;
-  phone?: string;
-  isAdmin: boolean;
-  joinedAt: string;
-}
-
-interface CyclePayment {
-  memberId: string;
-  memberName: string;
-  status: "pending" | "paid";
-  date?: string;
-}
+import { Input } from "@/components/ui/input";
+import { format } from "date-fns";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { useToast } from "@/hooks/use-toast";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import FadeIn from "@/components/ui/FadeIn";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/context/AuthContext";
 
 interface Cycle {
   id: string;
   number: number;
-  recipientId: string;
-  recipientName: string;
+  status: "pending" | "active" | "completed";
   startDate: string;
-  endDate: string;
-  paymentDate: string;
-  firstReminderDate: string;
-  secondReminderDate: string;
-  status: "upcoming" | "active" | "completed";
-  payments: CyclePayment[];
+  endDate: string | null;
+  recipientId: string | null;
+  recipientName: string | null;
+  paymentsMade: number;
+  totalPayments: number;
 }
 
-interface Notification {
+interface Member {
   id: string;
-  groupId: string;
-  cycleId: string;
-  memberId: string;
-  message: string;
-  type: "payment_reminder" | "cycle_completed" | "cycle_started";
-  isRead: boolean;
-  createdAt: string;
+  userId: string;
+  name: string;
+  isAdmin: boolean;
 }
 
 interface CycleManagementProps {
   groupId: string;
 }
 
-const cycleSchema = z.object({
-  recipientId: z.string().min(1, { message: "Please select a recipient" }),
-  startDate: z.string().min(1, { message: "Please enter a start date" }),
-  paymentDate: z.string().min(1, { message: "Please enter a payment date" }),
-  firstReminderDate: z.string().min(1, { message: "Please enter the first reminder date" }),
-  secondReminderDate: z.string().min(1, { message: "Please enter the second reminder date" }),
-});
-
-type CycleFormValues = z.infer<typeof cycleSchema>;
-
 const CycleManagement = ({ groupId }: CycleManagementProps) => {
   const [cycles, setCycles] = useState<Cycle[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
-  const [selectedCycle, setSelectedCycle] = useState<Cycle | null>(null);
-  const [openAddCycle, setOpenAddCycle] = useState(false);
-  const [openCycleDetails, setOpenCycleDetails] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [currentUserId, setCurrentUserId] = useState<string>("");
-  const [openSendReminder, setOpenSendReminder] = useState(false);
-  const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
   const { toast } = useToast();
+  const { user } = useAuth();
   
-  const form = useForm<CycleFormValues>({
-    resolver: zodResolver(cycleSchema),
-    defaultValues: {
-      recipientId: "",
-      startDate: new Date().toISOString().split('T')[0],
-      paymentDate: addDays(new Date(), 30).toISOString().split('T')[0],
-      firstReminderDate: addDays(new Date(), 20).toISOString().split('T')[0],
-      secondReminderDate: addDays(new Date(), 25).toISOString().split('T')[0],
-    },
-  });
+  // New cycle form state
+  const [showNewCycleDialog, setShowNewCycleDialog] = useState(false);
+  const [startDate, setStartDate] = useState<Date | undefined>(new Date());
+  const [endDate, setEndDate] = useState<Date | undefined>(undefined);
+  const [selectedRecipientId, setSelectedRecipientId] = useState<string>("");
   
-  const loadCycleData = () => {
-    setRefreshing(true);
-    
-    setTimeout(() => {
-      const storedGroups = JSON.parse(localStorage.getItem("groups") || "[]");
-      const currentGroup = storedGroups.find((g: any) => g.id === groupId);
-      
-      let storedMembers: Member[] = [];
-      let storedCycles: Cycle[] = [];
-      
-      if (currentGroup) {
-        storedMembers = currentGroup.membersList || [];
-        
-        // Handle conversion of old cycle format to new format with reminder dates
-        const cycles = currentGroup.cycles || [];
-        storedCycles = cycles.map((c: any) => {
-          if (!c.paymentDate) {
-            const endDate = new Date(c.endDate);
-            c.paymentDate = c.endDate;
-            c.firstReminderDate = addDays(endDate, -10).toISOString();
-            c.secondReminderDate = addDays(endDate, -5).toISOString();
-          }
-          return c;
-        });
-      }
-      
-      const user = JSON.parse(localStorage.getItem("user") || "{}");
-      setCurrentUserId(user.id || "1");
-      
-      setMembers(storedMembers);
-      setCycles(storedCycles);
-      
-      // Reset form with dates for new cycle
-      const today = new Date();
-      form.reset({
-        recipientId: form.getValues("recipientId"),
-        startDate: format(today, 'yyyy-MM-dd'),
-        paymentDate: format(addDays(today, 30), 'yyyy-MM-dd'),
-        firstReminderDate: format(addDays(today, 20), 'yyyy-MM-dd'),
-        secondReminderDate: format(addDays(today, 25), 'yyyy-MM-dd'),
-      });
-      
-      // Check for due reminders
-      checkAndSendAutomaticReminders(storedCycles);
-      
-      setLoading(false);
-      setRefreshing(false);
-    }, 500);
-  };
-  
+  // Load data
   useEffect(() => {
-    loadCycleData();
+    if (!user) return;
     
-    // Set up automatic reminder check every hour
-    const reminderInterval = setInterval(() => {
-      const storedGroups = JSON.parse(localStorage.getItem("groups") || "[]");
-      const currentGroup = storedGroups.find((g: any) => g.id === groupId);
+    const fetchData = async () => {
+      setLoading(true);
       
-      if (currentGroup && currentGroup.cycles) {
-        checkAndSendAutomaticReminders(currentGroup.cycles);
-      }
-    }, 3600000); // Every hour
-    
-    return () => clearInterval(reminderInterval);
-  }, [groupId]);
-  
-  const checkAndSendAutomaticReminders = (cyclesList: Cycle[]) => {
-    const today = new Date();
-    
-    cyclesList.forEach(cycle => {
-      if (cycle.status !== "active") return;
-      
-      // Check first reminder
-      const firstReminderDate = parseISO(cycle.firstReminderDate);
-      const secondReminderDate = parseISO(cycle.secondReminderDate);
-      
-      // Get pending payments
-      const pendingPayments = cycle.payments.filter(p => p.status === "pending");
-      
-      // First reminder date is today or has passed but is before second reminder
-      if ((isAfter(today, firstReminderDate) || format(today, 'yyyy-MM-dd') === format(firstReminderDate, 'yyyy-MM-dd')) && 
-          isBefore(today, secondReminderDate)) {
+      try {
+        // Check if user is admin
+        const { data: adminCheck, error: adminError } = await supabase
+          .from('group_members')
+          .select('is_admin')
+          .eq('group_id', groupId)
+          .eq('user_id', user.id)
+          .single();
+          
+        if (adminError) {
+          console.error("Admin check error:", adminError);
+          throw adminError;
+        }
         
-        pendingPayments.forEach(payment => {
-          // Check if we've already sent a reminder today
-          const notificationKey = `reminder1_${cycle.id}_${payment.memberId}_${format(today, 'yyyy-MM-dd')}`;
-          if (localStorage.getItem(notificationKey)) return;
+        setIsAdmin(adminCheck.is_admin || false);
+        
+        // Fetch cycles
+        const { data: cyclesData, error: cyclesError } = await supabase
+          .from('cycles')
+          .select(`
+            id, 
+            number,
+            status,
+            start_date,
+            end_date,
+            recipient_id
+          `)
+          .eq('group_id', groupId)
+          .order('number', { ascending: true });
           
-          // Send first reminder
-          addNotification({
-            groupId,
-            cycleId: cycle.id,
-            memberId: payment.memberId,
-            message: `First reminder: Your payment for cycle ${cycle.number} is due on ${format(parseISO(cycle.paymentDate), 'MMM dd, yyyy')}. Please make your contribution.`,
-            type: "payment_reminder"
+        if (cyclesError) {
+          console.error("Cycles fetch error:", cyclesError);
+          throw cyclesError;
+        }
+        
+        // Fetch members for the dropdown
+        const { data: membersData, error: membersError } = await supabase
+          .from('group_members')
+          .select(`
+            id, 
+            user_id,
+            is_admin
+          `)
+          .eq('group_id', groupId);
+          
+        if (membersError) {
+          console.error("Members fetch error:", membersError);
+          throw membersError;
+        }
+        
+        // Fetch user profiles for members
+        const userIds = membersData.map(m => m.user_id);
+        const { data: profiles, error: profilesError } = await supabase
+          .from('profiles')
+          .select('id, name')
+          .in('id', userIds);
+          
+        if (profilesError) {
+          console.error("Profiles fetch error:", profilesError);
+          throw profilesError;
+        }
+        
+        // Map user profiles to members
+        const profileMap = new Map();
+        if (profiles) {
+          profiles.forEach(profile => {
+            profileMap.set(profile.id, profile);
           });
-          
-          // Mark that we've sent this reminder today
-          localStorage.setItem(notificationKey, "sent");
+        }
+        
+        const formattedMembers = membersData.map(member => {
+          const profile = profileMap.get(member.user_id);
+          return {
+            id: member.id,
+            userId: member.user_id,
+            name: profile?.name || 'Unknown User',
+            isAdmin: member.is_admin
+          };
         });
-      }
-      
-      // Second reminder date is today or has passed but is before payment date
-      if ((isAfter(today, secondReminderDate) || format(today, 'yyyy-MM-dd') === format(secondReminderDate, 'yyyy-MM-dd')) && 
-          isBefore(today, parseISO(cycle.paymentDate))) {
         
-        pendingPayments.forEach(payment => {
-          // Check if we've already sent a reminder today
-          const notificationKey = `reminder2_${cycle.id}_${payment.memberId}_${format(today, 'yyyy-MM-dd')}`;
-          if (localStorage.getItem(notificationKey)) return;
-          
-          // Send second reminder (more urgent)
-          addNotification({
-            groupId,
-            cycleId: cycle.id,
-            memberId: payment.memberId,
-            message: `URGENT Reminder: Your payment for cycle ${cycle.number} is due on ${format(parseISO(cycle.paymentDate), 'MMM dd, yyyy')}. Please submit your contribution immediately.`,
-            type: "payment_reminder"
-          });
-          
-          // Also notify the recipient
-          addNotification({
-            groupId,
-            cycleId: cycle.id,
-            memberId: cycle.recipientId,
-            message: `Payment reminder was sent to member ${payment.memberName} for cycle ${cycle.number}.`,
-            type: "payment_reminder"
-          });
-          
-          // Mark that we've sent this reminder today
-          localStorage.setItem(notificationKey, "sent");
-        });
-      }
-    });
-  };
-  
-  const saveCycles = (cyclesList: Cycle[]) => {
-    const storedGroups = JSON.parse(localStorage.getItem("groups") || "[]");
-    const updatedGroups = storedGroups.map((group: any) => {
-      if (group.id === groupId) {
-        const activeCycle = cyclesList.find(cycle => cycle.status === "active");
+        setMembers(formattedMembers);
         
-        return {
-          ...group,
-          cycles: cyclesList,
-          currentCycle: activeCycle ? activeCycle.number : 0,
-          totalCycles: cyclesList.length,
-        };
-      }
-      return group;
-    });
-    
-    localStorage.setItem("groups", JSON.stringify(updatedGroups));
-  };
-  
-  const onAddCycle = (data: CycleFormValues) => {
-    const recipient = members.find(m => m.id === data.recipientId);
-    
-    if (!recipient) {
-      toast({
-        title: "Error",
-        description: "Selected recipient not found",
-        variant: "destructive",
-      });
-      return;
-    }
-    
-    // Validate dates
-    const startDate = new Date(data.startDate);
-    const paymentDate = new Date(data.paymentDate);
-    const firstReminderDate = new Date(data.firstReminderDate);
-    const secondReminderDate = new Date(data.secondReminderDate);
-    
-    if (firstReminderDate >= secondReminderDate) {
-      toast({
-        title: "Invalid dates",
-        description: "First reminder must be before the second reminder",
-        variant: "destructive",
-      });
-      return;
-    }
-    
-    if (secondReminderDate >= paymentDate) {
-      toast({
-        title: "Invalid dates",
-        description: "Second reminder must be before the payment date",
-        variant: "destructive",
-      });
-      return;
-    }
-    
-    const endDate = new Date(startDate);
-    endDate.setDate(endDate.getDate() + 30);
-    
-    const payments: CyclePayment[] = members.map(member => ({
-      memberId: member.id,
-      memberName: member.name,
-      status: "pending",
-    }));
-    
-    const newCycle: Cycle = {
-      id: Date.now().toString(),
-      number: cycles.length + 1,
-      recipientId: data.recipientId,
-      recipientName: recipient.name,
-      startDate: startDate.toISOString(),
-      endDate: endDate.toISOString(),
-      paymentDate: paymentDate.toISOString(),
-      firstReminderDate: firstReminderDate.toISOString(),
-      secondReminderDate: secondReminderDate.toISOString(),
-      status: cycles.length === 0 ? "active" : "upcoming",
-      payments,
-    };
-    
-    const updatedCycles = [...cycles, newCycle];
-    setCycles(updatedCycles);
-    saveCycles(updatedCycles);
-    
-    if (newCycle.status === "active") {
-      addNotification({
-        groupId,
-        cycleId: newCycle.id,
-        memberId: "all",
-        message: `Cycle ${newCycle.number} has started with ${recipient.name} as the recipient.`,
-        type: "cycle_started"
-      });
-    }
-    
-    toast({
-      title: "Cycle added",
-      description: `Cycle ${newCycle.number} has been created with ${recipient.name} as the recipient.`,
-    });
-    
-    setOpenAddCycle(false);
-    form.reset();
-  };
-  
-  const viewCycleDetails = (cycle: Cycle) => {
-    setSelectedCycle(cycle);
-    setOpenCycleDetails(true);
-  };
-  
-  const markPayment = (cycleId: string, memberId: string, status: "pending" | "paid") => {
-    if (!canRecordPayments(cycleId)) {
-      toast({
-        title: "Permission denied",
-        description: "Only admin or active recipient can record payments.",
-        variant: "destructive",
-      });
-      return;
-    }
-    
-    const updatedCycles = cycles.map(cycle => {
-      if (cycle.id === cycleId) {
-        const updatedPayments = cycle.payments.map(payment => {
-          if (payment.memberId === memberId) {
-            return {
-              ...payment,
-              status,
-              date: status === "paid" ? new Date().toISOString() : undefined,
-            };
+        // For each cycle, count the payments
+        const formattedCycles = await Promise.all(cyclesData.map(async (cycle) => {
+          // Count payments for this cycle
+          const { count: paymentsMade, error: paymentsError } = await supabase
+            .from('payments')
+            .select('id', { count: 'exact', head: true })
+            .eq('cycle_id', cycle.id)
+            .eq('status', 'paid');
+            
+          if (paymentsError) {
+            console.error("Payments count error:", paymentsError);
+            throw paymentsError;
           }
-          return payment;
-        });
+          
+          // Get total members count
+          const { count: totalMembers, error: membersCountError } = await supabase
+            .from('group_members')
+            .select('id', { count: 'exact', head: true })
+            .eq('group_id', groupId);
+            
+          if (membersCountError) {
+            console.error("Members count error:", membersCountError);
+            throw membersCountError;
+          }
+          
+          // Find recipient name if there is one
+          let recipientName = null;
+          if (cycle.recipient_id) {
+            const { data: recipient, error: recipientError } = await supabase
+              .from('profiles')
+              .select('name')
+              .eq('id', cycle.recipient_id)
+              .single();
+              
+            if (recipientError) {
+              console.error("Recipient fetch error:", recipientError);
+              // Don't throw, just log the error and continue
+            } else {
+              recipientName = recipient.name;
+            }
+          }
+          
+          return {
+            id: cycle.id,
+            number: cycle.number,
+            status: cycle.status as "pending" | "active" | "completed",
+            startDate: cycle.start_date,
+            endDate: cycle.end_date,
+            recipientId: cycle.recipient_id,
+            recipientName,
+            paymentsMade: paymentsMade || 0,
+            totalPayments: totalMembers || 0
+          };
+        }));
         
-        return {
-          ...cycle,
-          payments: updatedPayments,
-        };
-      }
-      return cycle;
-    });
-    
-    setCycles(updatedCycles);
-    saveCycles(updatedCycles);
-    
-    if (selectedCycle && selectedCycle.id === cycleId) {
-      const updatedCycle = updatedCycles.find(c => c.id === cycleId) || null;
-      setSelectedCycle(updatedCycle);
-    }
-    
-    toast({
-      title: status === "paid" ? "Payment confirmed" : "Payment reset",
-      description: `Payment has been marked as ${status}.`,
-    });
-    
-    // Add notification for recipient if payment is marked as paid
-    if (status === "paid") {
-      const cycle = cycles.find(c => c.id === cycleId);
-      const member = members.find(m => m.id === memberId);
-      
-      if (cycle && member) {
-        addNotification({
-          groupId,
-          cycleId,
-          memberId: cycle.recipientId,
-          message: `Payment received from ${member.name} for Cycle ${cycle.number}.`,
-          type: "payment_reminder"
+        setCycles(formattedCycles);
+      } catch (error) {
+        console.error("Error fetching cycle data:", error);
+        toast({
+          title: "Error loading cycles",
+          description: "There was an error loading the cycle data.",
+          variant: "destructive",
         });
+      } finally {
+        setLoading(false);
       }
-    }
-  };
-  
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    });
-  };
-  
-  const getPaymentProgress = (cycle: Cycle) => {
-    const totalPayments = cycle.payments.length;
-    const paidPayments = cycle.payments.filter(p => p.status === "paid").length;
-    return Math.round((paidPayments / totalPayments) * 100);
-  };
-  
-  const getNextRecipient = () => {
-    const recipientIds = cycles.map(cycle => cycle.recipientId);
-    const availableMembers = members.filter(member => !recipientIds.includes(member.id));
-    
-    if (availableMembers.length > 0) {
-      return availableMembers[0];
-    }
-    
-    const sortedCycles = [...cycles].sort((a, b) => 
-      new Date(a.startDate).getTime() - new Date(b.startDate).getTime()
-    );
-    
-    const firstRecipientId = sortedCycles[0]?.recipientId;
-    return members.find(member => member.id === firstRecipientId) || members[0];
-  };
-  
-  const completeCycle = (cycleId: string) => {
-    if (!canRecordPayments(cycleId)) {
-      toast({
-        title: "Permission denied",
-        description: "Only admin or active recipient can complete the cycle.",
-        variant: "destructive",
-      });
-      return;
-    }
-    
-    const updatedCycles = cycles.map(cycle => {
-      if (cycle.id === cycleId) {
-        return { ...cycle, status: "completed" as "completed" | "active" | "upcoming" };
-      }
-      
-      if (cycle.status === "upcoming" && cycles.find(c => c.id === cycleId)?.status === "active") {
-        addNotification({
-          groupId,
-          cycleId: cycle.id,
-          memberId: "all",
-          message: `Cycle ${cycle.number} is now active with ${cycle.recipientName} as the recipient.`,
-          type: "cycle_started"
-        });
-        
-        return { ...cycle, status: "active" as "completed" | "active" | "upcoming" };
-      }
-      
-      return cycle;
-    });
-    
-    setCycles(updatedCycles);
-    saveCycles(updatedCycles);
-    setOpenCycleDetails(false);
-    
-    const completedCycle = cycles.find(c => c.id === cycleId);
-    if (completedCycle) {
-      addNotification({
-        groupId,
-        cycleId,
-        memberId: "all",
-        message: `Cycle ${completedCycle.number} has been completed.`,
-        type: "cycle_completed"
-      });
-    }
-    
-    toast({
-      title: "Cycle completed",
-      description: "The cycle has been marked as completed and the next cycle has been activated.",
-    });
-  };
-  
-  const canRecordPayments = (cycleId: string) => {
-    const currentUser = members.find(m => m.id === currentUserId);
-    
-    if (currentUser?.isAdmin) {
-      return true;
-    }
-    
-    const activeCycle = cycles.find(c => c.id === cycleId);
-    if (activeCycle && activeCycle.status === "active" && activeCycle.recipientId === currentUserId) {
-      return true;
-    }
-    
-    return false;
-  };
-  
-  const getPendingMembers = (cycleId: string) => {
-    const cycle = cycles.find(c => c.id === cycleId);
-    if (!cycle) return [];
-    
-    return cycle.payments
-      .filter(p => p.status === "pending")
-      .map(p => ({
-        id: p.memberId,
-        name: p.memberName
-      }));
-  };
-  
-  const handleSendReminder = (cycleId: string, memberId: string) => {
-    if (!canRecordPayments(cycleId)) {
-      toast({
-        title: "Permission denied",
-        description: "Only admin or active recipient can send reminders.",
-        variant: "destructive",
-      });
-      return;
-    }
-    
-    const member = members.find(m => m.id === memberId);
-    const cycle = cycles.find(c => c.id === cycleId);
-    
-    if (!member || !cycle) {
-      toast({
-        title: "Error",
-        description: "Member or cycle not found",
-        variant: "destructive",
-      });
-      return;
-    }
-    
-    addNotification({
-      groupId,
-      cycleId,
-      memberId,
-      message: `Reminder: Your payment for cycle ${cycle.number} is due on ${formatDate(cycle.paymentDate)}. Please make your contribution as soon as possible.`,
-      type: "payment_reminder"
-    });
-    
-    toast({
-      title: "Reminder sent",
-      description: `Payment reminder sent to ${member.name}.`,
-    });
-    
-    setOpenSendReminder(false);
-    setSelectedMemberId(null);
-  };
-  
-  const addNotification = ({ groupId, cycleId, memberId, message, type }: {
-    groupId: string;
-    cycleId: string;
-    memberId: string;
-    message: string;
-    type: "payment_reminder" | "cycle_completed" | "cycle_started";
-  }) => {
-    const newNotification: Notification = {
-      id: Date.now().toString(),
-      groupId,
-      cycleId,
-      memberId,
-      message,
-      type,
-      isRead: false,
-      createdAt: new Date().toISOString()
     };
     
-    const notifications: Notification[] = JSON.parse(localStorage.getItem("notifications") || "[]");
-    const updatedNotifications = [...notifications, newNotification];
-    localStorage.setItem("notifications", JSON.stringify(updatedNotifications));
+    fetchData();
+  }, [groupId, user, toast]);
+  
+  const startCycle = async (cycleId: string) => {
+    if (!user || !isAdmin) return;
+    
+    try {
+      // Check if there's already an active cycle
+      const { data: activeCycles, error: checkError } = await supabase
+        .from('cycles')
+        .select('id')
+        .eq('group_id', groupId)
+        .eq('status', 'active');
+        
+      if (checkError) {
+        console.error("Active cycle check error:", checkError);
+        throw checkError;
+      }
+      
+      if (activeCycles && activeCycles.length > 0) {
+        toast({
+          title: "Active cycle exists",
+          description: "Please complete the current active cycle before starting a new one.",
+          variant: "destructive",
+        });
+        return;
+      }
+      
+      // Update the cycle status to active
+      const { error: updateError } = await supabase
+        .from('cycles')
+        .update({ status: 'active' })
+        .eq('id', cycleId);
+        
+      if (updateError) {
+        console.error("Cycle activation error:", updateError);
+        throw updateError;
+      }
+      
+      // Update cycle number in the group
+      const cycleToStart = cycles.find(c => c.id === cycleId);
+      if (cycleToStart) {
+        const { error: groupUpdateError } = await supabase
+          .from('groups')
+          .update({ current_cycle: cycleToStart.number })
+          .eq('id', groupId);
+          
+        if (groupUpdateError) {
+          console.error("Group update error:", groupUpdateError);
+          throw groupUpdateError;
+        }
+      }
+      
+      // Create pending payments for all members
+      const { data: groupData, error: groupError } = await supabase
+        .from('groups')
+        .select('contribution_amount')
+        .eq('id', groupId)
+        .single();
+        
+      if (groupError) {
+        console.error("Group fetch error:", groupError);
+        throw groupError;
+      }
+      
+      const contributionAmount = groupData.contribution_amount;
+      
+      // Get all members
+      const { data: groupMembers, error: membersError } = await supabase
+        .from('group_members')
+        .select('user_id')
+        .eq('group_id', groupId);
+        
+      if (membersError) {
+        console.error("Members fetch error:", membersError);
+        throw membersError;
+      }
+      
+      // Create pending payments for each member
+      const payments = groupMembers.map(member => ({
+        group_id: groupId,
+        cycle_id: cycleId,
+        user_id: member.user_id,
+        amount: contributionAmount,
+        status: 'pending'
+      }));
+      
+      const { error: paymentsError } = await supabase
+        .from('payments')
+        .insert(payments);
+        
+      if (paymentsError) {
+        console.error("Payments creation error:", paymentsError);
+        throw paymentsError;
+      }
+      
+      // Create notifications for all members
+      const notifications = groupMembers.map(member => ({
+        user_id: member.user_id,
+        group_id: groupId,
+        cycle_id: cycleId,
+        type: 'cycle_started',
+        message: `A new payment cycle has started in ${cycleToStart ? `cycle ${cycleToStart.number}` : 'your group'}`
+      }));
+      
+      await supabase
+        .from('notifications')
+        .insert(notifications);
+      
+      // Update the local state
+      setCycles(prev => prev.map(cycle => 
+        cycle.id === cycleId ? { ...cycle, status: 'active' } : cycle
+      ));
+      
+      toast({
+        title: "Cycle started",
+        description: "The cycle has been activated and members have been notified.",
+      });
+    } catch (error) {
+      console.error("Error starting cycle:", error);
+      toast({
+        title: "Error starting cycle",
+        description: "There was an error starting the cycle. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+  
+  const completeCycle = async (cycleId: string) => {
+    if (!user || !isAdmin) return;
+    
+    try {
+      // Update the cycle status to completed
+      const { error: updateError } = await supabase
+        .from('cycles')
+        .update({
+          status: 'completed',
+          end_date: new Date().toISOString()
+        })
+        .eq('id', cycleId);
+        
+      if (updateError) {
+        console.error("Cycle completion error:", updateError);
+        throw updateError;
+      }
+      
+      // Find the next cycle to prepare
+      const completedCycle = cycles.find(c => c.id === cycleId);
+      if (!completedCycle) return;
+      
+      const nextCycleNumber = completedCycle.number + 1;
+      const nextCycle = cycles.find(c => c.number === nextCycleNumber);
+      
+      // Create notifications for recipient
+      if (completedCycle.recipientId) {
+        await supabase
+          .from('notifications')
+          .insert({
+            user_id: completedCycle.recipientId,
+            group_id: groupId,
+            cycle_id: cycleId,
+            type: 'cycle_completed',
+            message: `Cycle ${completedCycle.number} has been completed. Check your account for the payout.`
+          });
+      }
+      
+      // Update the local state
+      setCycles(prev => prev.map(cycle => 
+        cycle.id === cycleId ? { ...cycle, status: 'completed', endDate: new Date().toISOString() } : cycle
+      ));
+      
+      toast({
+        title: "Cycle completed",
+        description: `Cycle ${completedCycle.number} has been marked as completed.`,
+      });
+      
+      // If there's a next cycle, suggest to start it
+      if (nextCycle) {
+        toast({
+          title: "Next cycle ready",
+          description: `Cycle ${nextCycle.number} is ready to be started.`,
+        });
+      }
+    } catch (error) {
+      console.error("Error completing cycle:", error);
+      toast({
+        title: "Error completing cycle",
+        description: "There was an error completing the cycle. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+  
+  const createNewCycle = async () => {
+    if (!user || !isAdmin || !startDate) return;
+    
+    try {
+      // Validate form
+      if (!selectedRecipientId) {
+        toast({
+          title: "Recipient required",
+          description: "Please select a recipient for this cycle.",
+          variant: "destructive",
+        });
+        return;
+      }
+      
+      // Get the next cycle number
+      const nextCycleNumber = cycles.length > 0 
+        ? Math.max(...cycles.map(c => c.number)) + 1 
+        : 1;
+      
+      // Create the new cycle
+      const { data: newCycle, error: cycleError } = await supabase
+        .from('cycles')
+        .insert({
+          group_id: groupId,
+          number: nextCycleNumber,
+          status: 'pending',
+          start_date: startDate.toISOString(),
+          end_date: endDate ? endDate.toISOString() : null,
+          recipient_id: selectedRecipientId
+        })
+        .select()
+        .single();
+        
+      if (cycleError) {
+        console.error("Cycle creation error:", cycleError);
+        throw cycleError;
+      }
+      
+      // Find recipient name
+      const recipient = members.find(m => m.userId === selectedRecipientId);
+      
+      // Add to local state
+      const newCycleFormatted: Cycle = {
+        id: newCycle.id,
+        number: newCycle.number,
+        status: newCycle.status as "pending" | "active" | "completed",
+        startDate: newCycle.start_date,
+        endDate: newCycle.end_date,
+        recipientId: newCycle.recipient_id,
+        recipientName: recipient?.name || null,
+        paymentsMade: 0,
+        totalPayments: members.length
+      };
+      
+      setCycles(prev => [...prev, newCycleFormatted]);
+      
+      // Update total cycles in group if needed
+      if (nextCycleNumber > cycles.length) {
+        await supabase
+          .from('groups')
+          .update({ total_cycles: nextCycleNumber })
+          .eq('id', groupId);
+      }
+      
+      // Reset form and close dialog
+      setStartDate(new Date());
+      setEndDate(undefined);
+      setSelectedRecipientId("");
+      setShowNewCycleDialog(false);
+      
+      toast({
+        title: "Cycle created",
+        description: `Cycle ${nextCycleNumber} has been created successfully.`,
+      });
+    } catch (error) {
+      console.error("Error creating cycle:", error);
+      toast({
+        title: "Error creating cycle",
+        description: "There was an error creating the cycle. Please try again.",
+        variant: "destructive",
+      });
+    }
   };
   
   if (loading) {
     return (
       <div className="space-y-4">
+        <div className="flex justify-between items-center mb-4">
+          <div className="h-7 w-32 bg-muted/30 rounded animate-pulse"></div>
+          <div className="h-9 w-36 bg-muted/30 rounded animate-pulse"></div>
+        </div>
         {[1, 2, 3].map((i) => (
-          <div key={i} className="h-16 bg-muted/30 rounded-xl animate-pulse" />
+          <div key={i} className="h-24 bg-muted/30 rounded-xl animate-pulse" />
         ))}
       </div>
     );
   }
   
-  const suggestedRecipient = getNextRecipient();
-  
   return (
     <FadeIn>
-      <div className="mb-6 flex justify-between items-center">
-        <h3 className="text-lg font-medium">Cycles ({cycles.length})</h3>
-        <div className="flex gap-2">
-          <Button 
-            variant="outline"
-            size="sm"
-            onClick={loadCycleData}
-            disabled={refreshing}
-            className="gap-2"
-          >
-            <RefreshCw size={14} className={refreshing ? "animate-spin" : ""} />
-            {refreshing ? "Refreshing..." : "Refresh"}
-          </Button>
-          <Button onClick={() => setOpenAddCycle(true)}>
+      <div className="flex justify-between items-center mb-6">
+        <h3 className="text-lg font-medium">Payment Cycles</h3>
+        {isAdmin && (
+          <Button onClick={() => setShowNewCycleDialog(true)}>
             <Plus size={16} className="mr-2" />
-            Create New Cycle
+            New Cycle
           </Button>
-        </div>
+        )}
       </div>
       
       {cycles.length === 0 ? (
-        <Card className="mb-6">
-          <CardContent className="p-6 text-center">
-            <Repeat className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-            <h3 className="text-lg font-medium mb-2">No cycles yet</h3>
-            <p className="text-muted-foreground mb-6">
-              Create your first cycle to start collecting contributions and assign a recipient.
+        <Card>
+          <CardContent className="py-8 flex flex-col items-center justify-center">
+            <div className="p-3 rounded-full bg-primary/10 mb-4">
+              <CalendarIcon size={24} className="text-primary" />
+            </div>
+            <h3 className="text-lg font-medium mb-2">No Payment Cycles</h3>
+            <p className="text-muted-foreground text-center max-w-md mb-6">
+              Payment cycles determine who receives the group pool in each round.
+              {isAdmin ? " As an admin, you can create and manage cycles." : ""}
             </p>
-            <Button onClick={() => setOpenAddCycle(true)}>
-              <Plus size={16} className="mr-2" />
-              Create First Cycle
-            </Button>
+            {isAdmin && (
+              <Button onClick={() => setShowNewCycleDialog(true)}>
+                <Plus size={16} className="mr-2" />
+                Create First Cycle
+              </Button>
+            )}
           </CardContent>
         </Card>
       ) : (
-        <Card className="mb-6">
-          <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Cycle</TableHead>
-                  <TableHead>Recipient</TableHead>
-                  <TableHead>Period</TableHead>
-                  <TableHead>Payment Due</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Progress</TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {cycles.map((cycle) => (
-                  <TableRow key={cycle.id}>
-                    <TableCell className="font-medium">Cycle {cycle.number}</TableCell>
-                    <TableCell>
-                      {cycle.recipientName}
-                      {cycle.status === "active" && cycle.recipientId === currentUserId && (
-                        <span className="ml-2 text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded-full">
-                          Active Recipient
+        <div className="space-y-4">
+          {cycles.map((cycle) => (
+            <Card key={cycle.id}>
+              <CardContent className="p-6">
+                <div className="flex flex-col md:flex-row justify-between gap-4">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-lg font-medium">Cycle {cycle.number}</h3>
+                      <Badge
+                        className={
+                          cycle.status === "active" 
+                            ? "bg-green-100 text-green-800 hover:bg-green-100"
+                            : cycle.status === "completed"
+                              ? "bg-blue-100 text-blue-800 hover:bg-blue-100"
+                              : "bg-yellow-100 text-yellow-800 hover:bg-yellow-100"
+                        }
+                      >
+                        {cycle.status === "active" ? (
+                          <><Clock size={12} className="mr-1" /> Active</>
+                        ) : cycle.status === "completed" ? (
+                          <><CheckCircle size={12} className="mr-1" /> Completed</>
+                        ) : (
+                          <>Pending</>
+                        )}
+                      </Badge>
+                    </div>
+                    
+                    <div className="text-muted-foreground text-sm">
+                      {cycle.startDate && (
+                        <span>
+                          Started: {format(new Date(cycle.startDate), "MMM d, yyyy")}
                         </span>
                       )}
-                    </TableCell>
-                    <TableCell>
-                      {formatDate(cycle.startDate)} - {formatDate(cycle.endDate)}
-                    </TableCell>
-                    <TableCell>
-                      {formatDate(cycle.paymentDate)}
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={cycle.status === "active" ? "default" : 
-                                cycle.status === "completed" ? "outline" : "secondary"}
-                      >
-                        {cycle.status.charAt(0).toUpperCase() + cycle.status.slice(1)}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <Progress value={getPaymentProgress(cycle)} className="h-2 w-20" />
-                        <span className="text-xs text-muted-foreground">
-                          {getPaymentProgress(cycle)}%
+                      {cycle.endDate && (
+                        <span className="ml-2">
+                          • Ended: {format(new Date(cycle.endDate), "MMM d, yyyy")}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+                    <div className="flex items-center gap-2">
+                      <div className="text-sm text-muted-foreground">
+                        <CircleDollarSign size={14} className="inline mr-1" />
+                        {cycle.paymentsMade} of {cycle.totalPayments} payments
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-center gap-2">
+                      <div className="text-sm flex items-center">
+                        <User size={14} className="mr-1 text-muted-foreground" />
+                        <span className="font-medium">
+                          {cycle.recipientName || "No recipient"}
                         </span>
                       </div>
-                    </TableCell>
-                    <TableCell>
-                      <Button 
-                        variant="outline" 
-                        size="sm" 
-                        onClick={() => viewCycleDetails(cycle)}
-                      >
-                        View Details
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
+                    </div>
+                    
+                    {isAdmin && (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon">
+                            <MoreHorizontal size={16} />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          {cycle.status === "pending" && (
+                            <DropdownMenuItem onClick={() => startCycle(cycle.id)}>
+                              Start Cycle
+                            </DropdownMenuItem>
+                          )}
+                          {cycle.status === "active" && (
+                            <DropdownMenuItem onClick={() => completeCycle(cycle.id)}>
+                              Complete Cycle
+                            </DropdownMenuItem>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    )}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
       )}
       
-      <Dialog open={openAddCycle} onOpenChange={setOpenAddCycle}>
+      {/* New Cycle Dialog */}
+      <Dialog open={showNewCycleDialog} onOpenChange={setShowNewCycleDialog}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Create New Cycle</DialogTitle>
           </DialogHeader>
           
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit(onAddCycle)} className="space-y-4">
-              <FormField
-                control={form.control}
-                name="recipientId"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Recipient</FormLabel>
-                    <Select 
-                      onValueChange={field.onChange} 
-                      defaultValue={field.value || suggestedRecipient?.id || ""}
-                    >
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select recipient" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {members.map((member) => (
-                          <SelectItem key={member.id} value={member.id}>
-                            {member.name} {member.isAdmin ? "(Admin)" : ""}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormDescription>
-                      This member will receive all contributions for this cycle.
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              
-              <FormField
-                control={form.control}
-                name="startDate"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Start Date</FormLabel>
-                    <FormControl>
-                      <Input type="date" {...field} />
-                    </FormControl>
-                    <FormDescription>
-                      When the cycle begins
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              
-              <FormField
-                control={form.control}
-                name="paymentDate"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Payment Due Date</FormLabel>
-                    <FormControl>
-                      <Input type="date" {...field} />
-                    </FormControl>
-                    <FormDescription>
-                      When all payments are due
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              
-              <FormField
-                control={form.control}
-                name="firstReminderDate"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>First Reminder Date</FormLabel>
-                    <FormControl>
-                      <Input type="date" {...field} />
-                    </FormControl>
-                    <FormDescription>
-                      When to send the first payment reminder
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              
-              <FormField
-                control={form.control}
-                name="secondReminderDate"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Second Reminder Date</FormLabel>
-                    <FormControl>
-                      <Input type="date" {...field} />
-                    </FormControl>
-                    <FormDescription>
-                      When to send the second payment reminder
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              
-              <DialogFooter>
-                <Button variant="outline" type="button" onClick={() => setOpenAddCycle(false)}>
-                  Cancel
-                </Button>
-                <Button type="submit">Create Cycle</Button>
-              </DialogFooter>
-            </form>
-          </Form>
-        </DialogContent>
-      </Dialog>
-      
-      {selectedCycle && (
-        <Dialog open={openCycleDetails} onOpenChange={setOpenCycleDetails}>
-          <DialogContent className="max-w-3xl">
-            <DialogHeader>
-              <DialogTitle className="flex items-center justify-between">
-                <span>Cycle {selectedCycle.number} Details</span>
-                <Badge
-                  variant={selectedCycle.status === "active" ? "default" : 
-                          selectedCycle.status === "completed" ? "outline" : "secondary"}
-                >
-                  {selectedCycle.status.charAt(0).toUpperCase() + selectedCycle.status.slice(1)}
-                </Badge>
-              </DialogTitle>
-            </DialogHeader>
-            
-            <div className="grid gap-4 py-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <h4 className="text-sm font-medium text-muted-foreground mb-1">Recipient</h4>
-                  <div className="font-medium flex items-center gap-2">
-                    <UserCheck size={16} className="text-primary" />
-                    {selectedCycle.recipientName}
-                    {selectedCycle.status === "active" && selectedCycle.recipientId === currentUserId && (
-                      <span className="text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded-full">
-                        You
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <div>
-                  <h4 className="text-sm font-medium text-muted-foreground mb-1">Period</h4>
-                  <div className="font-medium flex items-center gap-2">
-                    <Calendar size={16} className="text-primary" />
-                    {formatDate(selectedCycle.startDate)} - {formatDate(selectedCycle.endDate)}
-                  </div>
-                </div>
-              </div>
-              
-              <div className="grid grid-cols-3 gap-4">
-                <div>
-                  <h4 className="text-sm font-medium text-muted-foreground mb-1">Payment Due</h4>
-                  <div className="font-medium">
-                    {formatDate(selectedCycle.paymentDate)}
-                  </div>
-                </div>
-                <div>
-                  <h4 className="text-sm font-medium text-muted-foreground mb-1">First Reminder</h4>
-                  <div className="font-medium">
-                    {formatDate(selectedCycle.firstReminderDate || selectedCycle.endDate)}
-                  </div>
-                </div>
-                <div>
-                  <h4 className="text-sm font-medium text-muted-foreground mb-1">Second Reminder</h4>
-                  <div className="font-medium">
-                    {formatDate(selectedCycle.secondReminderDate || selectedCycle.endDate)}
-                  </div>
-                </div>
-              </div>
-              
-              <div className="mt-4">
-                <h4 className="text-sm font-medium text-muted-foreground mb-3">Payment Progress</h4>
-                <div className="mb-4">
-                  <Progress value={getPaymentProgress(selectedCycle)} className="h-2 mb-2" />
-                  <div className="flex justify-between text-xs text-muted-foreground">
-                    <span>
-                      {selectedCycle.payments.filter(p => p.status === "paid").length} of {selectedCycle.payments.length} payments received
-                    </span>
-                    <span>{getPaymentProgress(selectedCycle)}% complete</span>
-                  </div>
-                </div>
-                
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Member</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Date</TableHead>
-                      <TableHead>Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {selectedCycle.payments.map((payment) => (
-                      <TableRow key={payment.memberId}>
-                        <TableCell className="font-medium">
-                          {payment.memberName}
-                          {payment.memberId === selectedCycle.recipientId && (
-                            <span className="ml-2 text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full">
-                              Recipient
-                            </span>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <Badge
-                            variant={payment.status === "paid" ? "default" : "outline"}
-                            className={payment.status === "paid" ? 
-                              "bg-green-100 text-green-800 hover:bg-green-100" : 
-                              "text-amber-800"}
-                          >
-                            {payment.status === "paid" ? (
-                              <span className="flex items-center gap-1">
-                                <Check size={14} />
-                                Paid
-                              </span>
-                            ) : (
-                              <span className="flex items-center gap-1">
-                                <Clock size={14} />
-                                Pending
-                              </span>
-                            )}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          {payment.date ? formatDate(payment.date) : "-"}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            {payment.status === "pending" ? (
-                              <>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => markPayment(selectedCycle.id, payment.memberId, "paid")}
-                                  disabled={!canRecordPayments(selectedCycle.id)}
-                                >
-                                  Mark as Paid
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  onClick={() => {
-                                    setSelectedMemberId(payment.memberId);
-                                    setOpenSendReminder(true);
-                                  }}
-                                  disabled={!canRecordPayments(selectedCycle.id)}
-                                >
-                                  <Bell size={14} className="mr-1" />
-                                  Remind
-                                </Button>
-                              </>
-                            ) : (
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => markPayment(selectedCycle.id, payment.memberId, "pending")}
-                                disabled={!canRecordPayments(selectedCycle.id)}
-                              >
-                                Reset
-                              </Button>
-                            )}
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="startDate">Start Date</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className="w-full justify-start text-left font-normal"
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {startDate ? format(startDate, "PPP") : "Select date"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0">
+                  <Calendar
+                    mode="single"
+                    selected={startDate}
+                    onSelect={setStartDate}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
             </div>
             
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setOpenCycleDetails(false)}>
-                Close
-              </Button>
-              {selectedCycle.status === "active" && (
-                <Button 
-                  onClick={() => completeCycle(selectedCycle.id)}
-                  disabled={getPaymentProgress(selectedCycle) < 100 || !canRecordPayments(selectedCycle.id)}
-                >
-                  Complete Cycle
-                </Button>
-              )}
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      )}
-      
-      <Dialog open={openSendReminder} onOpenChange={setOpenSendReminder}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Send Payment Reminder</DialogTitle>
-          </DialogHeader>
-          
-          <div className="py-4">
-            <p className="mb-4">
-              Send a payment reminder to {members.find(m => m.id === selectedMemberId)?.name}.
-            </p>
-            <p className="text-sm text-muted-foreground">
-              This will send an in-app notification to the member reminding them to make their payment for the current cycle.
-            </p>
+            <div className="space-y-2">
+              <Label htmlFor="endDate">End Date (Optional)</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className="w-full justify-start text-left font-normal"
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {endDate ? format(endDate, "PPP") : "Select date"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0">
+                  <Calendar
+                    mode="single"
+                    selected={endDate}
+                    onSelect={setEndDate}
+                    disabled={(date) => (startDate ? date < startDate : false)}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="recipient">Recipient</Label>
+              <Select 
+                value={selectedRecipientId} 
+                onValueChange={setSelectedRecipientId}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select member" />
+                </SelectTrigger>
+                <SelectContent>
+                  {members.map((member) => (
+                    <SelectItem key={member.userId} value={member.userId}>
+                      {member.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
           
           <DialogFooter>
-            <Button variant="outline" onClick={() => setOpenSendReminder(false)}>
+            <Button variant="outline" onClick={() => setShowNewCycleDialog(false)}>
               Cancel
             </Button>
-            <Button 
-              onClick={() => selectedCycle && selectedMemberId && handleSendReminder(selectedCycle.id, selectedMemberId)}
-            >
-              <Bell size={16} className="mr-2" />
-              Send Reminder
-            </Button>
+            <Button onClick={createNewCycle}>Create Cycle</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
