@@ -86,8 +86,7 @@ const Dashboard = () => {
       ) : (
         <FadeIn>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {groups.map((group, index) => {
-              // Get group members and calculate totals
+            {groups.map((group) => {
               const currentCycle = group.current_cycle || 0;
               const totalCycles = group.total_cycles || 0;
               const cycleProgress = totalCycles > 0 ? (currentCycle / totalCycles) * 100 : 0;
@@ -98,13 +97,14 @@ const Dashboard = () => {
                   id={group.id}
                   name={group.name}
                   description={group.description || ""}
-                  members={[]} // Pass empty array as members prop
-                  totalMembers={0} // Pass 0 as totalMembers prop
+                  members={0} // Use 0 as default for members count
+                  totalMembers={group.max_members || 0}
                   contributionAmount={group.contribution_amount}
                   contributionFrequency={group.contribution_frequency}
                   currentCycle={currentCycle}
                   totalCycles={totalCycles}
                   cycleProgress={cycleProgress}
+                  nextPaymentDate="2025-04-15" // Provide a default date
                 />
               );
             })}

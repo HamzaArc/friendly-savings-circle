@@ -4,7 +4,19 @@ import { Link } from "react-router-dom";
 import { Plus, Users } from "lucide-react";
 import FadeIn from "../ui/FadeIn";
 
-const EmptyState = () => {
+interface EmptyStateProps {
+  title?: string;
+  description?: string;
+  buttonText?: string;
+  buttonLink?: string;
+}
+
+const EmptyState = ({
+  title = "No savings groups yet",
+  description = "Create your first savings group to start collaborating with friends, family, or colleagues and achieve your financial goals together.",
+  buttonText = "Create Your First Group",
+  buttonLink = "/create-group"
+}: EmptyStateProps) => {
   return (
     <FadeIn className="w-full py-16">
       <div className="mx-auto max-w-lg text-center">
@@ -12,16 +24,16 @@ const EmptyState = () => {
           <Users className="h-10 w-10 text-primary" />
         </div>
         
-        <h2 className="mb-2 text-2xl font-semibold tracking-tight">No savings groups yet</h2>
+        <h2 className="mb-2 text-2xl font-semibold tracking-tight">{title}</h2>
         
         <p className="mb-8 text-muted-foreground">
-          Create your first savings group to start collaborating with friends, family, or colleagues and achieve your financial goals together.
+          {description}
         </p>
         
         <Button asChild size="lg" className="px-8 animate-pulse">
-          <Link to="/create-group">
+          <Link to={buttonLink}>
             <Plus className="mr-2 h-5 w-5" />
-            Create Your First Group
+            {buttonText}
           </Link>
         </Button>
       </div>
