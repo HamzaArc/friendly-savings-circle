@@ -166,12 +166,13 @@ const GroupDetail = () => {
         
         // Add notification for recipient
         const notifications = JSON.parse(localStorage.getItem("notifications") || "[]");
+        const currentUser = JSON.parse(localStorage.getItem("user") || "{}");
         const newNotification = {
           id: Date.now().toString(),
           groupId: id,
           cycleId: activeCycle.id,
           memberId: activeCycle.recipientId,
-          message: `Payment received from ${JSON.parse(user || "{}").name || "User"} for Cycle ${activeCycle.number}.`,
+          message: `Payment received from ${currentUser.name || "User"} for Cycle ${activeCycle.number}.`,
           type: "payment_reminder",
           isRead: false,
           createdAt: new Date().toISOString()
