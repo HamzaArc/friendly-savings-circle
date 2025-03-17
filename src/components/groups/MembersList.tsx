@@ -12,6 +12,8 @@ import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from "
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/context/AuthContext";
 
 interface Member {
   id: string;
@@ -37,8 +39,10 @@ type MemberFormValues = z.infer<typeof memberSchema>;
 const MembersList = ({ groupId }: MembersListProps) => {
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [openAddMember, setOpenAddMember] = useState(false);
   const { toast } = useToast();
+  const { user } = useAuth();
   
   const form = useForm<MemberFormValues>({
     resolver: zodResolver(memberSchema),
@@ -50,59 +54,70 @@ const MembersList = ({ groupId }: MembersListProps) => {
   });
   
   useEffect(() => {
-    // Load members from localStorage
-    setTimeout(() => {
-      const storedGroups = JSON.parse(localStorage.getItem("groups") || "[]");
-      const currentGroup = storedGroups.find((g: any) => g.id === groupId);
-      
-      let storedMembers: Member[] = [];
-      
-      if (currentGroup && currentGroup.members) {
-        storedMembers = currentGroup.membersList || [];
-      }
-      
-      // Add current user as admin if the list is empty
-      if (storedMembers.length === 0) {
-        const user = JSON.parse(localStorage.getItem("user") || "{}");
-        storedMembers = [
-          {
-            id: "1",
-            name: user.name || "You",
-            email: user.email || "you@example.com",
-            isAdmin: true,
-            joinedAt: new Date().toISOString()
-          }
-        ];
-        
-        // Save the initial members list
-        saveMembers(storedMembers);
-      }
-      
-      setMembers(storedMembers);
-      setLoading(false);
-    }, 500);
-  }, [groupId]);
-  
-  const saveMembers = (membersList: Member[]) => {
-    // Save members to localStorage
-    const storedGroups = JSON.parse(localStorage.getItem("groups") || "[]");
-    const updatedGroups = storedGroups.map((group: any) => {
-      if (group.id === groupId) {
-        return {
-          ...group,
-          membersList,
-          members: membersList.length, // Update the count
-        };
-      }
-      return group;
-    });
+    if (!user) return;
     
-    localStorage.setItem("groups", JSON.stringify(updatedGroups));
-  };
+    const fetchMembers = async () => {
+      setLoading(true);
+      
+      try {
+        // Check if current user is admin
+        const { data: adminCheck, error: adminError } = await supabase
+          .from('group_members')
+          .select('is_admin')
+          .eq('group_id', groupId)
+          .eq('user_id', user.id)
+          .single();
+          
+        if (adminError && adminError.code !== 'PGRST116') {
+          throw adminError;
+        }
+        
+        setIsAdmin(adminCheck?.is_admin || false);
+        
+        // Fetch members of this group
+        const { data: memberships, error: membershipError } = await supabase
+          .from('group_members')
+          .select(`
+            id,
+            user_id,
+            is_admin,
+            joined_at,
+            profiles:user_id(
+              name,
+              email
+            )
+          `)
+          .eq('group_id', groupId);
+          
+        if (membershipError) throw membershipError;
+        
+        const formattedMembers = memberships.map(membership => ({
+          id: membership.id,
+          name: membership.profiles?.name || 'Unknown User',
+          email: membership.profiles?.email || '',
+          isAdmin: membership.is_admin,
+          joinedAt: membership.joined_at
+        }));
+        
+        setMembers(formattedMembers);
+      } catch (error) {
+        console.error('Error fetching members:', error);
+        toast({
+          title: "Error loading members",
+          description: "There was an error loading the group members.",
+          variant: "destructive",
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchMembers();
+  }, [groupId, user, toast]);
   
   const copyInviteLink = () => {
     // In a real app, this would generate a unique invite link
-    navigator.clipboard.writeText(`https://tontine-app.example/invite/${groupId}`);
+    navigator.clipboard.writeText(`${window.location.origin}/invite/${groupId}`);
     
     toast({
       title: "Invite link copied",
@@ -110,24 +125,109 @@ const MembersList = ({ groupId }: MembersListProps) => {
     });
   };
   
-  const onAddMember = (data: MemberFormValues) => {
-    const newMember: Member = {
-      id: Date.now().toString(),
-      name: data.name,
-      email: data.email,
-      phone: data.phone,
-      isAdmin: false,
-      joinedAt: new Date().toISOString(),
-    };
+  const onAddMember = async (data: MemberFormValues) => {
+    if (!user) return;
     
-    const updatedMembers = [...members, newMember];
-    setMembers(updatedMembers);
-    saveMembers(updatedMembers);
-    
-    toast({
-      title: "Member added",
-      description: `${data.name} has been added to the group.`,
-    });
+    try {
+      // First check if a user with this email exists
+      const { data: existingUser, error: userError } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('email', data.email)
+        .maybeSingle();
+        
+      if (userError && userError.code !== 'PGRST116') throw userError;
+      
+      let userId = existingUser?.id;
+      
+      if (!userId) {
+        // In a real app, you would send an invite email
+        // For now, we'll create a placeholder user
+        toast({
+          title: "User not found",
+          description: "This email is not registered in the system. An invitation will be sent.",
+        });
+        
+        // We'll skip adding the member for now
+        setOpenAddMember(false);
+        form.reset();
+        return;
+      }
+      
+      // Check if user is already a member
+      const { data: existingMember, error: memberCheckError } = await supabase
+        .from('group_members')
+        .select('id')
+        .eq('group_id', groupId)
+        .eq('user_id', userId)
+        .maybeSingle();
+        
+      if (memberCheckError && memberCheckError.code !== 'PGRST116') throw memberCheckError;
+      
+      if (existingMember) {
+        toast({
+          title: "Member already exists",
+          description: "This user is already a member of this group.",
+          variant: "destructive",
+        });
+        setOpenAddMember(false);
+        form.reset();
+        return;
+      }
+      
+      // Add member to group
+      const { error: addError } = await supabase
+        .from('group_members')
+        .insert({
+          group_id: groupId,
+          user_id: userId,
+          is_admin: false
+        });
+        
+      if (addError) throw addError;
+      
+      // Refresh the member list
+      const { data: newMember, error: fetchError } = await supabase
+        .from('group_members')
+        .select(`
+          id,
+          user_id,
+          is_admin,
+          joined_at,
+          profiles:user_id(
+            name,
+            email
+          )
+        `)
+        .eq('group_id', groupId)
+        .eq('user_id', userId)
+        .single();
+        
+      if (fetchError) throw fetchError;
+      
+      const formattedNewMember = {
+        id: newMember.id,
+        name: newMember.profiles?.name || data.name,
+        email: newMember.profiles?.email || data.email,
+        phone: data.phone,
+        isAdmin: newMember.is_admin,
+        joinedAt: newMember.joined_at
+      };
+      
+      setMembers(prev => [...prev, formattedNewMember]);
+      
+      toast({
+        title: "Member added",
+        description: `${data.name} has been added to the group.`,
+      });
+    } catch (error) {
+      console.error('Error adding member:', error);
+      toast({
+        title: "Error adding member",
+        description: "There was an error adding the member to the group.",
+        variant: "destructive",
+      });
+    }
     
     setOpenAddMember(false);
     form.reset();
@@ -186,12 +286,14 @@ const MembersList = ({ groupId }: MembersListProps) => {
               </div>
             ))}
             
-            <div className="py-6 px-6">
-              <Button variant="outline" className="w-full" onClick={() => setOpenAddMember(true)}>
-                <Plus size={16} className="mr-2" />
-                Add Member
-              </Button>
-            </div>
+            {isAdmin && (
+              <div className="py-6 px-6">
+                <Button variant="outline" className="w-full" onClick={() => setOpenAddMember(true)}>
+                  <Plus size={16} className="mr-2" />
+                  Add Member
+                </Button>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>

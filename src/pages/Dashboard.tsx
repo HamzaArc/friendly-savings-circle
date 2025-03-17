@@ -8,6 +8,8 @@ import AppShell from "@/components/layout/AppShell";
 import GroupCard from "@/components/dashboard/GroupCard";
 import EmptyState from "@/components/dashboard/EmptyState";
 import { useAuth } from "@/context/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 
 interface Group {
   id: string;
@@ -26,21 +28,87 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [groups, setGroups] = useState<Group[]>([]);
   const { user } = useAuth();
+  const { toast } = useToast();
   
   useEffect(() => {
-    // Load groups
-    const storedGroups = localStorage.getItem("groups");
-    if (storedGroups) {
-      setGroups(JSON.parse(storedGroups));
-    }
+    if (!user) return;
     
-    // Simulate loading
-    const timer = setTimeout(() => {
-      setLoading(false);
-    }, 800);
+    const fetchGroups = async () => {
+      setLoading(true);
+      
+      try {
+        // Fetch groups where the user is a member
+        const { data: memberships, error: membershipError } = await supabase
+          .from('group_members')
+          .select('group_id')
+          .eq('user_id', user.id);
+          
+        if (membershipError) throw membershipError;
+        
+        if (memberships && memberships.length > 0) {
+          const groupIds = memberships.map(m => m.group_id);
+          
+          // Fetch the actual group data
+          const { data: groupsData, error: groupsError } = await supabase
+            .from('groups')
+            .select(`
+              id, 
+              name, 
+              description, 
+              contribution_amount, 
+              contribution_frequency, 
+              max_members, 
+              current_cycle, 
+              total_cycles, 
+              next_payment_date
+            `)
+            .in('id', groupIds);
+            
+          if (groupsError) throw groupsError;
+          
+          // For each group, get the member count
+          const groupsWithMembers = await Promise.all(
+            groupsData.map(async (group) => {
+              const { count, error: countError } = await supabase
+                .from('group_members')
+                .select('id', { count: 'exact', head: true })
+                .eq('group_id', group.id);
+                
+              if (countError) throw countError;
+              
+              return {
+                id: group.id,
+                name: group.name,
+                description: group.description || '',
+                contributionAmount: Number(group.contribution_amount),
+                contributionFrequency: group.contribution_frequency,
+                members: count || 0,
+                totalMembers: group.max_members,
+                currentCycle: group.current_cycle || 0,
+                totalCycles: group.total_cycles || group.max_members,
+                nextPaymentDate: group.next_payment_date || new Date().toISOString()
+              };
+            })
+          );
+          
+          setGroups(groupsWithMembers);
+        } else {
+          setGroups([]);
+        }
+      } catch (error) {
+        console.error('Error fetching groups:', error);
+        toast({
+          title: "Error fetching groups",
+          description: "There was an error loading your groups. Please try again.",
+          variant: "destructive",
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
     
-    return () => clearTimeout(timer);
-  }, []);
+    fetchGroups();
+  }, [user, toast]);
 
   return (
     <AppShell>

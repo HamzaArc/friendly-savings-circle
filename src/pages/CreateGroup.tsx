@@ -1,9 +1,21 @@
 
+import { useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import FadeIn from "@/components/ui/FadeIn";
 import AppShell from "@/components/layout/AppShell";
 import GroupForm from "@/components/groups/GroupForm";
+import { useAuth } from "@/context/AuthContext";
 
 const CreateGroup = () => {
+  const { user } = useAuth();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!user) {
+      navigate("/auth");
+    }
+  }, [user, navigate]);
+
   return (
     <AppShell>
       <FadeIn className="mb-10">

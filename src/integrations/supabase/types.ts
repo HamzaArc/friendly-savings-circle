@@ -9,6 +9,217 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      cycles: {
+        Row: {
+          created_at: string
+          end_date: string | null
+          group_id: string
+          id: string
+          number: number
+          recipient_id: string | null
+          start_date: string
+          status: string
+        }
+        Insert: {
+          created_at?: string
+          end_date?: string | null
+          group_id: string
+          id?: string
+          number: number
+          recipient_id?: string | null
+          start_date?: string
+          status?: string
+        }
+        Update: {
+          created_at?: string
+          end_date?: string | null
+          group_id?: string
+          id?: string
+          number?: number
+          recipient_id?: string | null
+          start_date?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cycles_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      group_members: {
+        Row: {
+          group_id: string
+          id: string
+          is_admin: boolean
+          joined_at: string
+          user_id: string
+        }
+        Insert: {
+          group_id: string
+          id?: string
+          is_admin?: boolean
+          joined_at?: string
+          user_id: string
+        }
+        Update: {
+          group_id?: string
+          id?: string
+          is_admin?: boolean
+          joined_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "group_members_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      groups: {
+        Row: {
+          contribution_amount: number
+          contribution_frequency: string
+          created_at: string
+          created_by: string
+          current_cycle: number | null
+          description: string | null
+          id: string
+          max_members: number
+          name: string
+          next_payment_date: string | null
+          total_cycles: number | null
+        }
+        Insert: {
+          contribution_amount: number
+          contribution_frequency: string
+          created_at?: string
+          created_by: string
+          current_cycle?: number | null
+          description?: string | null
+          id?: string
+          max_members: number
+          name: string
+          next_payment_date?: string | null
+          total_cycles?: number | null
+        }
+        Update: {
+          contribution_amount?: number
+          contribution_frequency?: string
+          created_at?: string
+          created_by?: string
+          current_cycle?: number | null
+          description?: string | null
+          id?: string
+          max_members?: number
+          name?: string
+          next_payment_date?: string | null
+          total_cycles?: number | null
+        }
+        Relationships: []
+      }
+      notifications: {
+        Row: {
+          created_at: string
+          cycle_id: string | null
+          group_id: string | null
+          id: string
+          is_read: boolean
+          message: string
+          type: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          cycle_id?: string | null
+          group_id?: string | null
+          id?: string
+          is_read?: boolean
+          message: string
+          type: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          cycle_id?: string | null
+          group_id?: string | null
+          id?: string
+          is_read?: boolean
+          message?: string
+          type?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notifications_cycle_id_fkey"
+            columns: ["cycle_id"]
+            isOneToOne: false
+            referencedRelation: "cycles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notifications_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      payments: {
+        Row: {
+          amount: number
+          created_at: string
+          cycle_id: string
+          group_id: string
+          id: string
+          payment_date: string | null
+          status: string
+          user_id: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          cycle_id: string
+          group_id: string
+          id?: string
+          payment_date?: string | null
+          status?: string
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          cycle_id?: string
+          group_id?: string
+          id?: string
+          payment_date?: string | null
+          status?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payments_cycle_id_fkey"
+            columns: ["cycle_id"]
+            isOneToOne: false
+            referencedRelation: "cycles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payments_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           created_at: string

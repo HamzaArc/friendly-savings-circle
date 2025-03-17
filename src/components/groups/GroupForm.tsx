@@ -9,11 +9,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent } from "@/components/ui/card";
 import FadeIn from "../ui/FadeIn";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/context/AuthContext";
 
 const GroupForm = () => {
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
   const navigate = useNavigate();
+  const { user } = useAuth();
 
   const [formData, setFormData] = useState({
     name: "",
@@ -34,6 +37,16 @@ const GroupForm = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (!user) {
+      toast({
+        title: "Authentication required",
+        description: "Please sign in to create a group.",
+        variant: "destructive",
+      });
+      navigate("/auth");
+      return;
+    }
     
     // Validate form
     if (!formData.name.trim()) {
@@ -56,28 +69,34 @@ const GroupForm = () => {
     
     setLoading(true);
     
-    // Simulate API call
-    setTimeout(() => {
-      // Get existing groups or initialize empty array
-      const existingGroups = JSON.parse(localStorage.getItem("groups") || "[]");
+    try {
+      // Create new group in Supabase
+      const { data: groupData, error: groupError } = await supabase
+        .from('groups')
+        .insert({
+          name: formData.name,
+          description: formData.description,
+          contribution_amount: Number(formData.contributionAmount),
+          contribution_frequency: formData.contributionFrequency,
+          max_members: Number(formData.maxMembers),
+          total_cycles: Number(formData.maxMembers),
+          created_by: user.id
+        })
+        .select()
+        .single();
       
-      // Create new group
-      const newGroup = {
-        id: Date.now().toString(),
-        ...formData,
-        contributionAmount: Number(formData.contributionAmount),
-        maxMembers: Number(formData.maxMembers),
-        members: 1, // User who created it
-        currentCycle: 0,
-        totalCycles: Number(formData.maxMembers),
-        nextPaymentDate: "2023-11-01", // Example date
-        createdAt: new Date().toISOString(),
-      };
+      if (groupError) throw groupError;
       
-      // Add to localStorage
-      localStorage.setItem("groups", JSON.stringify([...existingGroups, newGroup]));
+      // Add the creator as a member and admin
+      const { error: memberError } = await supabase
+        .from('group_members')
+        .insert({
+          group_id: groupData.id,
+          user_id: user.id,
+          is_admin: true
+        });
       
-      setLoading(false);
+      if (memberError) throw memberError;
       
       toast({
         title: "Group created!",
@@ -86,7 +105,16 @@ const GroupForm = () => {
       
       // Navigate to dashboard
       navigate("/dashboard");
-    }, 1500);
+    } catch (error) {
+      console.error("Error creating group:", error);
+      toast({
+        title: "Error creating group",
+        description: "There was an error creating your group. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
