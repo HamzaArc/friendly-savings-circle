@@ -23,6 +23,7 @@ import HelpButton from "./components/onboarding/HelpButton";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import ProtectedRoute from "./components/auth/ProtectedRoute";
+import OnboardingForm from "./components/onboarding/OnboardingForm";
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -39,6 +40,7 @@ const App = () => (
               <Route path="/" element={<Index />} />
               <Route path="/login" element={<Login />} />
               <Route path="/register" element={<Register />} />
+              <Route path="/onboarding" element={<OnboardingForm />} />
               
               <Route element={<ProtectedRoute />}>
                 <Route path="/dashboard" element={<Dashboard />} />
