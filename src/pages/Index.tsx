@@ -4,10 +4,11 @@ import { Button } from "@/components/ui/button";
 import { ChevronRight, Users, Calendar, Shield, BarChart3 } from "lucide-react";
 import FadeIn from "@/components/ui/FadeIn";
 import AppShell from "@/components/layout/AppShell";
+import { useAuth } from "@/context/AuthContext";
 
 const Index = () => {
-  // Check if user is logged in
-  const user = localStorage.getItem("user");
+  // Use our new auth context
+  const { user } = useAuth();
   
   const features = [
     {
@@ -58,10 +59,10 @@ const Index = () => {
               ) : (
                 <>
                   <Button asChild variant="ghost" size="sm">
-                    <Link to="/onboarding">Sign In</Link>
+                    <Link to="/auth">Sign In</Link>
                   </Button>
                   <Button asChild size="sm">
-                    <Link to="/onboarding">Get Started</Link>
+                    <Link to="/auth">Get Started</Link>
                   </Button>
                 </>
               )}
@@ -92,7 +93,7 @@ const Index = () => {
           <FadeIn delay={400}>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Button asChild size="lg" className="px-8">
-                <Link to="/onboarding">
+                <Link to="/auth">
                   Get Started for Free
                   <ChevronRight size={18} className="ml-1" />
                 </Link>
@@ -160,7 +161,7 @@ const Index = () => {
               Join thousands of people who are already saving together and achieving their financial goals.
             </p>
             <Button asChild size="lg" className="px-8">
-              <Link to="/onboarding">
+              <Link to="/auth">
                 Create Your Account
                 <ChevronRight size={18} className="ml-1" />
               </Link>

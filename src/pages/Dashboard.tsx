@@ -2,11 +2,12 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Plus, Settings } from "lucide-react";
+import { Plus } from "lucide-react";
 import FadeIn from "@/components/ui/FadeIn";
 import AppShell from "@/components/layout/AppShell";
 import GroupCard from "@/components/dashboard/GroupCard";
 import EmptyState from "@/components/dashboard/EmptyState";
+import { useAuth } from "@/context/AuthContext";
 
 interface Group {
   id: string;
@@ -24,15 +25,9 @@ interface Group {
 const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [groups, setGroups] = useState<Group[]>([]);
+  const { user } = useAuth();
   
-  // Check if user is logged in, redirect to onboarding if not
   useEffect(() => {
-    const user = localStorage.getItem("user");
-    if (!user) {
-      window.location.href = "/onboarding";
-      return;
-    }
-    
     // Load groups
     const storedGroups = localStorage.getItem("groups");
     if (storedGroups) {

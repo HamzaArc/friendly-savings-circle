@@ -5,6 +5,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { useEffect, useState } from "react";
+import { AuthProvider, useAuth } from "@/context/AuthContext";
 import Index from "./pages/Index";
 import Dashboard from "./pages/Dashboard";
 import UserDashboard from "./pages/UserDashboard";
@@ -19,29 +20,79 @@ import LearnMore from "./pages/LearnMore";
 import Contact from "./pages/Contact";
 import Groups from "./pages/Groups";
 import HelpButton from "./components/onboarding/HelpButton";
+import Auth from "./pages/Auth";
 
 const queryClient = new QueryClient();
 
-const Onboarding = () => {
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
+// Protected route component
+const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
+  const { user, loading } = useAuth();
   
-  useEffect(() => {
-    // Check if user is already logged in
-    const user = localStorage.getItem("user");
-    if (user) {
-      setIsLoggedIn(true);
-    }
-  }, []);
-  
-  // If logged in, redirect to dashboard
-  if (isLoggedIn) {
-    return <Navigate to="/dashboard" replace />;
+  if (loading) {
+    return <div className="flex items-center justify-center min-h-screen">Loading...</div>;
   }
   
+  if (!user) {
+    return <Navigate to="/auth" replace />;
+  }
+  
+  return <>{children}</>;
+};
+
+const Onboarding = () => {
+  return <Navigate to="/auth" replace />;
+};
+
+const AppRoutes = () => {
   return (
-    <AppShell>
-      <OnboardingForm />
-    </AppShell>
+    <>
+      <div className="fixed bottom-4 right-4 z-50">
+        <HelpButton />
+      </div>
+      <Routes>
+        <Route path="/" element={<Index />} />
+        <Route path="/auth" element={<Auth />} />
+        <Route path="/dashboard" element={
+          <ProtectedRoute>
+            <Dashboard />
+          </ProtectedRoute>
+        } />
+        <Route path="/user-dashboard" element={
+          <ProtectedRoute>
+            <UserDashboard />
+          </ProtectedRoute>
+        } />
+        <Route path="/create-group" element={
+          <ProtectedRoute>
+            <CreateGroup />
+          </ProtectedRoute>
+        } />
+        <Route path="/groups/:id" element={
+          <ProtectedRoute>
+            <GroupDetail />
+          </ProtectedRoute>
+        } />
+        <Route path="/onboarding" element={<Onboarding />} />
+        <Route path="/reports" element={
+          <ProtectedRoute>
+            <Reports />
+          </ProtectedRoute>
+        } />
+        <Route path="/settings" element={
+          <ProtectedRoute>
+            <Settings />
+          </ProtectedRoute>
+        } />
+        <Route path="/learn-more" element={<LearnMore />} />
+        <Route path="/contact" element={<Contact />} />
+        <Route path="/groups" element={
+          <ProtectedRoute>
+            <Groups />
+          </ProtectedRoute>
+        } />
+        <Route path="*" element={<NotFound />} />
+      </Routes>
+    </>
   );
 };
 
@@ -51,23 +102,9 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
-        <div className="fixed bottom-4 right-4 z-50">
-          <HelpButton />
-        </div>
-        <Routes>
-          <Route path="/" element={<Index />} />
-          <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/user-dashboard" element={<UserDashboard />} />
-          <Route path="/create-group" element={<CreateGroup />} />
-          <Route path="/groups/:id" element={<GroupDetail />} />
-          <Route path="/onboarding" element={<Onboarding />} />
-          <Route path="/reports" element={<Reports />} />
-          <Route path="/settings" element={<Settings />} />
-          <Route path="/learn-more" element={<LearnMore />} />
-          <Route path="/contact" element={<Contact />} />
-          <Route path="/groups" element={<Groups />} />
-          <Route path="*" element={<NotFound />} />
-        </Routes>
+        <AuthProvider>
+          <AppRoutes />
+        </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>
