@@ -1,126 +1,105 @@
 
-import { useState, useEffect } from 'react';
-import { Link, useLocation } from 'react-router-dom';
-import { Button } from '@/components/ui/button';
-import { cn } from '@/lib/utils';
-import { Menu, X, Plus, Home, Users, BarChart3 } from 'lucide-react';
+import { useState, useEffect } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { Button } from "@/components/ui/button";
+import { LogOut, Menu, User } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import { useMobile } from "@/hooks/use-mobile";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import NotificationCenter from "@/components/notifications/NotificationCenter";
 
 const Header = () => {
-  const [scrolled, setScrolled] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
-  const location = useLocation();
-  
+  const navigate = useNavigate();
+  const { toast } = useToast();
+  const isMobile = useMobile();
+  const [userName, setUserName] = useState("");
+
   useEffect(() => {
-    const handleScroll = () => {
-      const isScrolled = window.scrollY > 10;
-      if (isScrolled !== scrolled) {
-        setScrolled(isScrolled);
+    // Get user data from localStorage
+    const user = localStorage.getItem("user");
+    if (user) {
+      try {
+        const userData = JSON.parse(user);
+        setUserName(userData.name || "User");
+      } catch (error) {
+        console.error("Error parsing user data:", error);
       }
-    };
+    }
+  }, []);
 
-    window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, [scrolled]);
-
-  // Close menu when changing routes
-  useEffect(() => {
-    setMenuOpen(false);
-  }, [location.pathname]);
-
-  const navItems = [
-    { name: 'Dashboard', path: '/dashboard', icon: Home },
-    { name: 'Groups', path: '/groups', icon: Users },
-    { name: 'Reports', path: '/reports', icon: BarChart3 },
-  ];
-
-  const isActive = (path: string) => {
-    return location.pathname === path;
+  const handleLogout = () => {
+    // Clear user data from localStorage
+    localStorage.removeItem("user");
+    
+    toast({
+      title: "Logged out",
+      description: "You have been successfully logged out.",
+    });
+    
+    // Navigate to home page
+    navigate("/");
   };
 
   return (
-    <header 
-      className={cn(
-        'fixed top-0 left-0 right-0 z-50 transition-all duration-300',
-        scrolled ? 'glass-morphism py-3' : 'py-5 bg-transparent'
-      )}
-    >
-      <div className="container px-6 mx-auto flex items-center justify-between">
-        <Link 
-          to="/" 
-          className="flex items-center gap-2 text-xl font-display font-semibold tracking-tight"
-        >
-          <div className="rounded-lg bg-primary h-8 w-8 flex items-center justify-center">
-            <span className="text-white font-bold">T</span>
-          </div>
-          <span>Tontine</span>
-        </Link>
-
-        {/* Desktop Navigation */}
-        <nav className="hidden md:flex items-center gap-6">
-          {navItems.map((item) => (
-            <Link
-              key={item.path}
-              to={item.path}
-              className={cn(
-                'flex items-center gap-1.5 text-sm font-medium transition-colors hover:text-primary',
-                isActive(item.path) ? 'text-primary' : 'text-muted-foreground'
-              )}
-            >
-              <item.icon size={16} />
-              {item.name}
-            </Link>
-          ))}
-        </nav>
-
-        {/* Action Buttons */}
-        <div className="hidden md:flex items-center gap-4">
-          <Button asChild variant="outline" size="sm">
-            <Link to="/create-group">
-              <Plus size={16} className="mr-1.5" />
-              New Group
-            </Link>
-          </Button>
+    <header className="border-b">
+      <div className="container flex h-16 items-center justify-between py-4">
+        <div className="flex items-center gap-4">
+          {isMobile && (
+            <Button variant="ghost" size="icon" className="md:hidden">
+              <Menu className="h-5 w-5" />
+              <span className="sr-only">Toggle menu</span>
+            </Button>
+          )}
+          <Link to="/dashboard" className="flex items-center gap-2">
+            <img
+              src="/placeholder.svg"
+              alt="Logo"
+              className="h-6 w-6 rounded-full"
+            />
+            <span className="text-lg font-semibold tracking-tight">
+              Tontine
+            </span>
+          </Link>
         </div>
-
-        {/* Mobile Menu Button */}
-        <button
-          onClick={() => setMenuOpen(!menuOpen)}
-          className="p-2 md:hidden text-muted-foreground hover:text-foreground transition-colors"
-          aria-label="Toggle menu"
-        >
-          {menuOpen ? <X size={24} /> : <Menu size={24} />}
-        </button>
-      </div>
-
-      {/* Mobile Menu */}
-      <div
-        className={cn(
-          'fixed inset-x-0 top-[57px] bg-white/90 backdrop-blur-lg md:hidden transition-all duration-300 transform border-b border-gray-100',
-          menuOpen ? 'translate-y-0 opacity-100' : '-translate-y-full opacity-0'
-        )}
-      >
-        <div className="container px-6 mx-auto py-6 flex flex-col gap-6">
-          <nav className="flex flex-col gap-4">
-            {navItems.map((item) => (
-              <Link
-                key={item.path}
-                to={item.path}
-                className={cn(
-                  'flex items-center gap-2 py-2 text-sm font-medium transition-colors',
-                  isActive(item.path) ? 'text-primary' : 'text-muted-foreground'
-                )}
-              >
-                <item.icon size={18} />
-                {item.name}
-              </Link>
-            ))}
-          </nav>
-          <Button asChild size="sm">
-            <Link to="/create-group" className="flex items-center gap-2">
-              <Plus size={16} />
-              Create New Group
-            </Link>
-          </Button>
+        <div className="flex items-center gap-4">
+          <NotificationCenter />
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="rounded-full">
+                <User className="h-5 w-5" />
+                <span className="sr-only">User menu</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuLabel>
+                <div className="flex flex-col">
+                  <span>{userName}</span>
+                  <span className="text-xs font-normal text-muted-foreground">
+                    User Account
+                  </span>
+                </div>
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem asChild>
+                <Link to="/user-dashboard">Your Dashboard</Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link to="/dashboard">Savings Groups</Link>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={handleLogout}>
+                <LogOut className="mr-2 h-4 w-4" />
+                Log out
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
     </header>

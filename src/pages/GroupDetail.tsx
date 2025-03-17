@@ -2,7 +2,7 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Users, DollarSign, Calendar, AlertCircle } from "lucide-react";
+import { ArrowLeft, Users, DollarSign, Calendar, AlertCircle, Shield } from "lucide-react";
 import FadeIn from "@/components/ui/FadeIn";
 import AppShell from "@/components/layout/AppShell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -27,6 +27,8 @@ interface Group {
   nextPaymentDate: string;
   createdAt: string;
   maxMembers: number;
+  cycles?: any[];
+  membersList?: any[];
 }
 
 const GroupDetail = () => {
@@ -35,6 +37,9 @@ const GroupDetail = () => {
   const { toast } = useToast();
   const [group, setGroup] = useState<Group | null>(null);
   const [loading, setLoading] = useState(true);
+  const [currentUserId, setCurrentUserId] = useState<string>("");
+  const [isActiveRecipient, setIsActiveRecipient] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
   
   // Check if user is logged in, redirect to onboarding if not
   useEffect(() => {
@@ -44,6 +49,9 @@ const GroupDetail = () => {
       return;
     }
     
+    const userData = JSON.parse(user);
+    setCurrentUserId(userData.id || "1");
+    
     // Load group data
     const loadGroup = () => {
       try {
@@ -52,6 +60,22 @@ const GroupDetail = () => {
         
         if (foundGroup) {
           setGroup(foundGroup);
+          
+          // Check if user is admin
+          if (foundGroup.membersList) {
+            const isMemberAdmin = foundGroup.membersList.some(
+              (m: any) => m.id === userData.id && m.isAdmin
+            );
+            setIsAdmin(isMemberAdmin);
+          }
+          
+          // Check if user is active recipient
+          if (foundGroup.cycles) {
+            const activeCycle = foundGroup.cycles.find((c: any) => c.status === "active");
+            if (activeCycle && activeCycle.recipientId === userData.id) {
+              setIsActiveRecipient(true);
+            }
+          }
         } else {
           toast({
             title: "Group not found",
@@ -77,13 +101,56 @@ const GroupDetail = () => {
   }, [id, navigate, toast]);
   
   const handleMakePayment = () => {
-    toast({
-      title: "Payment submitted",
-      description: "Your contribution has been recorded.",
-    });
-    
-    // In a real app, this would update the database
-    // For now, we'll just show a success message
+    // Find active cycle
+    if (group?.cycles) {
+      const activeCycle = group.cycles.find(c => c.status === "active");
+      if (activeCycle) {
+        // Check if user has already paid
+        const userPayment = activeCycle.payments.find(p => p.memberId === currentUserId);
+        if (userPayment && userPayment.status === "paid") {
+          toast({
+            title: "Already paid",
+            description: "You have already made your contribution for this cycle.",
+          });
+          return;
+        }
+        
+        // Update the user's payment
+        const updatedGroups = JSON.parse(localStorage.getItem("groups") || "[]").map((g: Group) => {
+          if (g.id === id) {
+            const updatedCycles = g.cycles?.map(c => {
+              if (c.id === activeCycle.id) {
+                const updatedPayments = c.payments.map(p => {
+                  if (p.memberId === currentUserId) {
+                    return { ...p, status: "paid", date: new Date().toISOString() };
+                  }
+                  return p;
+                });
+                return { ...c, payments: updatedPayments };
+              }
+              return c;
+            });
+            return { ...g, cycles: updatedCycles };
+          }
+          return g;
+        });
+        
+        localStorage.setItem("groups", JSON.stringify(updatedGroups));
+        
+        // Reload group data
+        setGroup(updatedGroups.find((g: Group) => g.id === id) || null);
+        
+        toast({
+          title: "Payment submitted",
+          description: "Your contribution has been recorded.",
+        });
+      } else {
+        toast({
+          title: "No active cycle",
+          description: "There is no active cycle to contribute to.",
+        });
+      }
+    }
   };
   
   if (loading) {
@@ -115,6 +182,11 @@ const GroupDetail = () => {
   }
   
   const progressPercentage = (group.currentCycle / group.totalCycles) * 100;
+  const hasActivePayment = group.cycles?.some(c => 
+    c.status === "active" && c.payments.some(p => 
+      p.memberId === currentUserId && p.status === "pending"
+    )
+  );
   
   return (
     <AppShell>
@@ -129,7 +201,22 @@ const GroupDetail = () => {
             Back to Dashboard
           </Button>
           
-          <h1 className="text-3xl font-semibold tracking-tight mb-1">{group.name}</h1>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-1">
+            <h1 className="text-3xl font-semibold tracking-tight">{group.name}</h1>
+            <div className="flex gap-2">
+              {isAdmin && (
+                <Badge variant="outline" className="font-normal">
+                  <Shield size={14} className="mr-1 text-primary" />
+                  Admin
+                </Badge>
+              )}
+              {isActiveRecipient && (
+                <Badge className="bg-green-100 text-green-800 hover:bg-green-100 font-normal">
+                  Active Recipient
+                </Badge>
+              )}
+            </div>
+          </div>
           <p className="text-muted-foreground">
             {group.description || "Rotating savings group"}
           </p>
@@ -243,6 +330,7 @@ const GroupDetail = () => {
             size="lg" 
             className="px-8 gap-2"
             onClick={handleMakePayment}
+            disabled={!hasActivePayment}
           >
             <DollarSign size={18} />
             Make Payment
