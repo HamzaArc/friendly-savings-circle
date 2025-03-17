@@ -18,12 +18,14 @@ export const useNotifications = () => {
   return useQuery({
     queryKey: ['notifications'],
     queryFn: () => getNotifications(user?.id || ''),
-    onError: (error: any) => {
-      toast({
-        title: "Error fetching notifications",
-        description: error.message,
-        variant: "destructive",
-      });
+    meta: {
+      onError: (error: any) => {
+        toast({
+          title: "Error fetching notifications",
+          description: error.message,
+          variant: "destructive",
+        });
+      }
     },
     enabled: !!user,
   });

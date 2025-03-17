@@ -31,7 +31,10 @@ export const createPayment = async (paymentData: Omit<Payment, 'id' | 'created_a
       description: "A new payment has been created."
     });
     
-    return data;
+    return data ? {
+      ...data,
+      status: data.status as 'pending' | 'paid'
+    } : null;
   } catch (error: any) {
     console.error('Error creating payment:', error.message);
     toast({
@@ -62,7 +65,10 @@ export const getPayments = async (cycleId?: string, userId?: string): Promise<Pa
     const { data, error } = await query.order('created_at', { ascending: false });
     
     if (error) throw error;
-    return data || [];
+    return data ? data.map(payment => ({
+      ...payment,
+      status: payment.status as 'pending' | 'paid'
+    })) : [];
   } catch (error: any) {
     console.error('Error fetching payments:', error.message);
     return [];
@@ -82,7 +88,10 @@ export const getPayment = async (paymentId: string): Promise<Payment | null> => 
       .single();
     
     if (error) throw error;
-    return data;
+    return data ? {
+      ...data,
+      status: data.status as 'pending' | 'paid'
+    } : null;
   } catch (error: any) {
     console.error('Error fetching payment:', error.message);
     return null;
@@ -105,7 +114,10 @@ export const updatePayment = async (paymentId: string, paymentData: Partial<Paym
       description: "The payment has been updated successfully."
     });
     
-    return data;
+    return data ? {
+      ...data,
+      status: data.status as 'pending' | 'paid'
+    } : null;
   } catch (error: any) {
     console.error('Error updating payment:', error.message);
     toast({
@@ -152,7 +164,10 @@ export const getUserPaymentsForCycle = async (cycleId: string, userId: string): 
       .eq('payer_id', userId);
     
     if (error) throw error;
-    return data || [];
+    return data ? data.map(payment => ({
+      ...payment,
+      status: payment.status as 'pending' | 'paid'
+    })) : [];
   } catch (error: any) {
     console.error('Error fetching user payments for cycle:', error.message);
     return [];
@@ -178,7 +193,10 @@ export const confirmPayment = async (paymentId: string): Promise<Payment | null>
       description: "The payment has been confirmed successfully."
     });
     
-    return data;
+    return data ? {
+      ...data,
+      status: data.status as 'pending' | 'paid'
+    } : null;
   } catch (error: any) {
     console.error('Error confirming payment:', error.message);
     toast({

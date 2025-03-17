@@ -19,12 +19,14 @@ export const usePayments = (cycleId?: string, userId?: string) => {
   return useQuery({
     queryKey: ['payments', { cycleId, userId }],
     queryFn: () => getPayments(cycleId, userId),
-    onError: (error: any) => {
-      toast({
-        title: "Error fetching payments",
-        description: error.message,
-        variant: "destructive",
-      });
+    meta: {
+      onError: (error: any) => {
+        toast({
+          title: "Error fetching payments",
+          description: error.message,
+          variant: "destructive",
+        });
+      }
     },
   });
 };
@@ -36,12 +38,14 @@ export const usePayment = (paymentId: string) => {
   return useQuery({
     queryKey: ['payments', 'detail', paymentId],
     queryFn: () => getPayment(paymentId),
-    onError: (error: any) => {
-      toast({
-        title: "Error fetching payment",
-        description: error.message,
-        variant: "destructive",
-      });
+    meta: {
+      onError: (error: any) => {
+        toast({
+          title: "Error fetching payment",
+          description: error.message,
+          variant: "destructive",
+        });
+      }
     },
     enabled: !!paymentId,
   });
@@ -161,12 +165,14 @@ export const useUserPaymentsForCycle = (cycleId: string, userId: string) => {
   return useQuery({
     queryKey: ['payments', 'user', userId, 'cycle', cycleId],
     queryFn: () => getUserPaymentsForCycle(cycleId, userId),
-    onError: (error: any) => {
-      toast({
-        title: "Error fetching user payments",
-        description: error.message,
-        variant: "destructive",
-      });
+    meta: {
+      onError: (error: any) => {
+        toast({
+          title: "Error fetching user payments",
+          description: error.message,
+          variant: "destructive",
+        });
+      }
     },
     enabled: !!cycleId && !!userId,
   });

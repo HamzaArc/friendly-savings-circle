@@ -22,7 +22,10 @@ export const createNotification = async (notificationData: Omit<Notification, 'i
       .single();
     
     if (error) throw error;
-    return data;
+    return data ? {
+      ...data,
+      type: data.type as 'payment_reminder' | 'cycle_completed' | 'cycle_started'
+    } : null;
   } catch (error: any) {
     console.error('Error creating notification:', error.message);
     return null;
@@ -38,7 +41,10 @@ export const getNotifications = async (userId: string): Promise<Notification[]> 
       .order('created_at', { ascending: false });
     
     if (error) throw error;
-    return data || [];
+    return data ? data.map(notification => ({
+      ...notification,
+      type: notification.type as 'payment_reminder' | 'cycle_completed' | 'cycle_started'
+    })) : [];
   } catch (error: any) {
     console.error('Error fetching notifications:', error.message);
     return [];
@@ -55,7 +61,10 @@ export const updateNotification = async (notificationId: string, notificationDat
       .single();
     
     if (error) throw error;
-    return data;
+    return data ? {
+      ...data,
+      type: data.type as 'payment_reminder' | 'cycle_completed' | 'cycle_started'
+    } : null;
   } catch (error: any) {
     console.error('Error updating notification:', error.message);
     return null;
@@ -72,7 +81,10 @@ export const markNotificationAsRead = async (notificationId: string): Promise<No
       .single();
     
     if (error) throw error;
-    return data;
+    return data ? {
+      ...data,
+      type: data.type as 'payment_reminder' | 'cycle_completed' | 'cycle_started'
+    } : null;
   } catch (error: any) {
     console.error('Error marking notification as read:', error.message);
     return null;
@@ -89,7 +101,10 @@ export const markAllNotificationsAsRead = async (userId: string): Promise<Notifi
       .select();
     
     if (error) throw error;
-    return data || [];
+    return data ? data.map(notification => ({
+      ...notification,
+      type: notification.type as 'payment_reminder' | 'cycle_completed' | 'cycle_started'
+    })) : [];
   } catch (error: any) {
     console.error('Error marking all notifications as read:', error.message);
     return [];

@@ -19,12 +19,14 @@ export const useGroups = () => {
   return useQuery({
     queryKey: ['groups'],
     queryFn: () => getGroups(user?.id),
-    onError: (error: any) => {
-      toast({
-        title: "Error fetching groups",
-        description: error.message,
-        variant: "destructive",
-      });
+    meta: {
+      onError: (error: any) => {
+        toast({
+          title: "Error fetching groups",
+          description: error.message,
+          variant: "destructive",
+        });
+      }
     },
     enabled: !!user,
   });
@@ -37,12 +39,14 @@ export const useGroup = (groupId: string) => {
   return useQuery({
     queryKey: ['groups', groupId],
     queryFn: () => getGroup(groupId),
-    onError: (error: any) => {
-      toast({
-        title: "Error fetching group",
-        description: error.message,
-        variant: "destructive",
-      });
+    meta: {
+      onError: (error: any) => {
+        toast({
+          title: "Error fetching group",
+          description: error.message,
+          variant: "destructive",
+        });
+      }
     },
     enabled: !!groupId,
   });
@@ -139,12 +143,14 @@ export const useGroupMembers = (groupId: string) => {
   return useQuery({
     queryKey: ['groups', groupId, 'members'],
     queryFn: () => getGroupMembers(groupId),
-    onError: (error: any) => {
-      toast({
-        title: "Error fetching group members",
-        description: error.message,
-        variant: "destructive",
-      });
+    meta: {
+      onError: (error: any) => {
+        toast({
+          title: "Error fetching group members",
+          description: error.message,
+          variant: "destructive",
+        });
+      }
     },
     enabled: !!groupId,
   });

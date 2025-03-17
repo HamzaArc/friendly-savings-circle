@@ -1,298 +1,376 @@
 
-import { useState, useEffect } from "react";
-import { useParams, useNavigate, useSearchParams } from "react-router-dom";
-import { Button } from "@/components/ui/button";
-import { ArrowLeft, Users, DollarSign, Calendar, AlertCircle, Shield, RefreshCw } from "lucide-react";
-import FadeIn from "@/components/ui/FadeIn";
-import AppShell from "@/components/layout/AppShell";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Progress } from "@/components/ui/progress";
-import { Badge } from "@/components/ui/badge";
-import { useToast } from "@/hooks/use-toast";
-import GroupNavigation from "@/components/layout/GroupNavigation";
-import MembersList from "@/components/groups/MembersList";
-import PaymentHistory from "@/components/groups/PaymentHistory";
-import CycleManagement from "@/components/groups/CycleManagement";
-import GroupSettings from "@/components/groups/GroupSettings";
-import { useAuth } from "@/contexts/AuthContext";
-import { useGroup } from "@/hooks/useGroups";
-import { useActiveCycle } from "@/hooks/useCycles";
-import { useRealtime } from "@/hooks/useRealtime";
+import { useState } from 'react';
+import { useParams, useNavigate, Link } from 'react-router-dom';
+import { 
+  Tabs, 
+  TabsContent, 
+  TabsList, 
+  TabsTrigger 
+} from '@/components/ui/tabs';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
+import { 
+  Dialog, 
+  DialogTrigger, 
+  DialogContent, 
+  DialogHeader, 
+  DialogTitle, 
+  DialogDescription, 
+  DialogFooter, 
+  DialogClose 
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Separator } from '@/components/ui/separator';
+import { Badge } from '@/components/ui/badge';
+import { 
+  Calendar, 
+  CreditCard, 
+  DollarSign, 
+  FileText, 
+  Settings, 
+  Users, 
+  UserPlus, 
+  XCircle,
+  MoreVertical,
+  Trash,
+  Edit,
+  Play
+} from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+
+import { useGroup, useDeleteGroup } from '@/hooks/useGroups';
+import { useCycles, useActivateNextCycle } from '@/hooks/useCycles';
+import { useAuth } from '@/contexts/AuthContext';
+import { useRealtime } from '@/hooks/useRealtime';
+
+import PaymentHistory from '@/components/groups/PaymentHistory';
+import MembersList from '@/components/groups/MembersList';
+import CycleManagement from '@/components/groups/CycleManagement';
+import GroupSettings from '@/components/groups/GroupSettings';
+import GroupInvite from '@/components/groups/GroupInvite';
+import { useToast } from '@/hooks/use-toast';
 
 const GroupDetail = () => {
   const { id } = useParams<{ id: string }>();
-  const [searchParams, setSearchParams] = useSearchParams();
-  const navigate = useNavigate();
   const { toast } = useToast();
+  const navigate = useNavigate();
   const { user } = useAuth();
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [isActiveRecipient, setIsActiveRecipient] = useState(false);
-  const [isAdmin, setIsAdmin] = useState(false);
-  
-  // Use tab from URL or default to "cycles"
-  const currentTab = searchParams.get("tab") || "cycles";
-  
-  // Function to change tab
-  const handleTabChange = (value: string) => {
-    searchParams.set("tab", value);
-    setSearchParams(searchParams);
-  };
+  const [activeTab, setActiveTab] = useState('overview');
+  const [showConfirmDelete, setShowConfirmDelete] = useState(false);
 
-  // Fetch group data using React Query
-  const { data: group, isLoading: isGroupLoading, refetch: refetchGroup } = useGroup(id || '');
-  const { data: activeCycle, isLoading: isCycleLoading, refetch: refetchActiveCycle } = useActiveCycle(id || '');
-
-  // Set up realtime updates for this group
+  const { data: groupData, isLoading, isError } = useGroup(id || '');
+  const { data: cycles = [] } = useCycles(id || '');
+  const { mutate: activateNextCycle } = useActivateNextCycle();
+  const { mutate: deleteGroup } = useDeleteGroup();
+  
+  // Set up realtime subscriptions
   useRealtime([
     { table: 'groups', event: 'UPDATE', filter: `id=eq.${id}` },
     { table: 'group_members', event: '*', filter: `group_id=eq.${id}` },
     { table: 'cycles', event: '*', filter: `group_id=eq.${id}` },
-    { table: 'payments', event: '*' }
+    { table: 'payments', event: '*' },
   ]);
-  
-  // Load group data function that can be reused for refreshing
-  const loadGroupData = async () => {
-    setRefreshing(true);
-    
-    // Refetch data
-    await Promise.all([
-      refetchGroup(),
-      refetchActiveCycle()
-    ]);
-    
-    setRefreshing(false);
-  };
-  
-  // Check admin status and active recipient status
-  useEffect(() => {
-    if (group && activeCycle && user) {
-      // Check if user is admin
-      const isMemberAdmin = group.group_members?.some(
-        (m: any) => m.user_id === user.id && m.is_admin
-      );
-      setIsAdmin(isMemberAdmin);
-      
-      // Check if user is active recipient
-      if (activeCycle && activeCycle.recipient_id === user.id) {
-        setIsActiveRecipient(true);
-      } else {
-        setIsActiveRecipient(false);
-      }
-    }
 
-    if (!isGroupLoading && !isCycleLoading) {
-      setLoading(false);
-    }
-  }, [group, activeCycle, user, isGroupLoading, isCycleLoading]);
-  
-  const handleMakePayment = async () => {
-    if (!user || !activeCycle) return;
+  if (isLoading) {
+    return <div className="flex items-center justify-center min-h-screen">Loading...</div>;
+  }
 
-    // Implementation will use useCreatePayment hook from services/payments
-    // This is a placeholder for the refactored implementation
-    toast({
-      title: "Payment submitted",
-      description: "Your contribution has been recorded.",
-    });
-    
-    // Refresh data after payment
-    await loadGroupData();
-  };
-  
-  if (loading || isGroupLoading) {
-    return (
-      <AppShell>
-        <div className="animate-pulse space-y-6">
-          <div className="h-10 w-1/3 bg-muted/30 rounded"></div>
-          <div className="h-80 bg-muted/30 rounded-xl"></div>
-        </div>
-      </AppShell>
-    );
+  if (isError || !groupData) {
+    return <div className="text-center my-8">Error loading group details</div>;
   }
+
+  const { group, members } = groupData;
   
-  if (!group) {
-    return (
-      <AppShell>
-        <div className="text-center py-12">
-          <AlertCircle className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-          <h2 className="text-2xl font-semibold mb-2">Group Not Found</h2>
-          <p className="text-muted-foreground mb-6">
-            The savings group you're looking for doesn't exist or has been deleted.
-          </p>
-          <Button onClick={() => navigate("/dashboard")}>
-            Return to Dashboard
-          </Button>
-        </div>
-      </AppShell>
-    );
-  }
-  
-  const progressPercentage = (group.current_cycle / group.total_cycles) * 100;
-  const hasActivePayment = activeCycle?.payments?.some(p => 
-    p.payer_id === user?.id && p.status === "pending"
+  const isAdmin = members.some(member => 
+    member.user_id === user?.id && member.is_admin
   );
+
+  const activeCycle = cycles.find(c => c.status === 'active');
+  const upcomingCycles = cycles.filter(c => c.status === 'upcoming');
+  const completedCycles = cycles.filter(c => c.status === 'completed');
   
+  const handleActivateNextCycle = () => {
+    activateNextCycle(id || '', {
+      onSuccess: () => {
+        toast({
+          title: "Next cycle activated",
+          description: "The next cycle has been activated successfully.",
+        });
+      }
+    });
+  };
+
+  const handleDeleteGroup = () => {
+    deleteGroup(id || '', {
+      onSuccess: () => {
+        toast({
+          title: "Group deleted",
+          description: "The group has been deleted successfully."
+        });
+        navigate('/groups');
+      }
+    });
+  };
+
   return (
-    <AppShell>
-      <FadeIn>
-        <GroupNavigation currentGroupId={id} />
-        
-        <div className="mb-8">
-          <div className="flex justify-between items-center mb-4">
-            <Button 
-              variant="ghost" 
-              className="mb-4 -ml-3 text-muted-foreground"
-              onClick={() => navigate("/dashboard")}
-            >
-              <ArrowLeft size={16} className="mr-2" />
-              Back to Dashboard
-            </Button>
-            
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={loadGroupData}
-              disabled={refreshing}
-              className="gap-2"
-            >
-              <RefreshCw size={14} className={refreshing ? "animate-spin" : ""} />
-              {refreshing ? "Refreshing..." : "Refresh"}
-            </Button>
+    <div className="container mx-auto px-4 py-6">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-6">
+        <div>
+          <div className="flex items-center">
+            <h1 className="text-2xl font-bold">{group.name}</h1>
+            {group.is_public && (
+              <Badge variant="outline" className="ml-2">
+                Public
+              </Badge>
+            )}
           </div>
-          
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-1">
-            <h1 className="text-3xl font-semibold tracking-tight">{group.name}</h1>
-            <div className="flex gap-2">
-              {isAdmin && (
-                <Badge variant="outline" className="font-normal">
-                  <Shield size={14} className="mr-1 text-primary" />
-                  Admin
-                </Badge>
-              )}
-              {isActiveRecipient && (
-                <Badge className="bg-green-100 text-green-800 hover:bg-green-100 font-normal">
-                  Active Recipient
-                </Badge>
-              )}
-            </div>
-          </div>
-          <p className="text-muted-foreground">
-            {group.description || "Rotating savings group"}
+          <p className="text-muted-foreground mt-1">
+            {group.description || "No description provided"}
           </p>
         </div>
         
-        <div className="grid gap-6 md:grid-cols-3 mb-8">
-          <FadeIn delay={100}>
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">
-                  Cycle Progress
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold mb-2">
-                  {group.current_cycle} of {group.total_cycles}
-                </div>
-                <Progress value={progressPercentage} className="h-2 mb-2" />
-                <p className="text-sm text-muted-foreground">
-                  {progressPercentage.toFixed(0)}% complete
-                </p>
-              </CardContent>
-            </Card>
-          </FadeIn>
-          
-          <FadeIn delay={200}>
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">
-                  Contribution
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold mb-2">
-                  ${group.contribution_amount}
-                </div>
-                <Badge variant="outline" className="font-normal">
-                  {group.contribution_frequency}
-                </Badge>
-              </CardContent>
-            </Card>
-          </FadeIn>
-          
-          <FadeIn delay={300}>
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">
-                  Members
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold mb-2">
-                  {group.members_count} of {group.max_members}
-                </div>
-                <div className="flex gap-2 items-center">
-                  <div className="flex -space-x-2">
-                    {[...Array(Math.min(group.members_count || 1, 3))].map((_, i) => (
+        {isAdmin && (
+          <div className="mt-4 md:mt-0 flex gap-2">
+            <GroupInvite groupId={id || ''} />
+            
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="icon">
+                  <MoreVertical className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuLabel>Group Actions</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => setActiveTab('settings')}>
+                  <Edit className="h-4 w-4 mr-2" />
+                  Edit Group
+                </DropdownMenuItem>
+                {activeCycle && upcomingCycles.length > 0 && (
+                  <DropdownMenuItem onClick={handleActivateNextCycle}>
+                    <Play className="h-4 w-4 mr-2" />
+                    Activate Next Cycle
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuItem 
+                  className="text-destructive" 
+                  onClick={() => setShowConfirmDelete(true)}
+                >
+                  <Trash className="h-4 w-4 mr-2" />
+                  Delete Group
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        )}
+      </div>
+
+      <Tabs defaultValue="overview" value={activeTab} onValueChange={setActiveTab}>
+        <TabsList className="grid grid-cols-5 md:w-auto w-full">
+          <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="members">Members</TabsTrigger>
+          <TabsTrigger value="cycles">Cycles</TabsTrigger>
+          <TabsTrigger value="payments">Payments</TabsTrigger>
+          {isAdmin && <TabsTrigger value="settings">Settings</TabsTrigger>}
+        </TabsList>
+        
+        <div className="mt-6">
+          <TabsContent value="overview">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Group Information</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div>
+                    <h3 className="font-medium">Cycle Progress</h3>
+                    <p className="text-sm text-muted-foreground">
+                      {group.current_cycle} of {group.total_cycles} cycles completed
+                    </p>
+                    <div className="w-full bg-secondary h-2 rounded-full mt-2">
                       <div 
-                        key={i}
-                        className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center border border-background"
-                      >
-                        <Users size={14} className="text-primary" />
-                      </div>
-                    ))}
+                        className="bg-primary h-2 rounded-full" 
+                        style={{ width: `${(group.current_cycle / group.total_cycles) * 100}%` }}
+                      ></div>
+                    </div>
                   </div>
-                  
-                  {group.members_count > 3 && (
-                    <div className="text-sm text-muted-foreground">
-                      +{group.members_count - 3} more
+                  <Separator />
+                  <div>
+                    <h3 className="font-medium">Contribution Details</h3>
+                    <div className="mt-2 grid grid-cols-2 gap-2">
+                      <div>
+                        <p className="text-sm text-muted-foreground">Amount</p>
+                        <p className="font-medium">${group.contribution_amount}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">Frequency</p>
+                        <p className="font-medium">{group.contribution_frequency}</p>
+                      </div>
+                    </div>
+                  </div>
+                  <Separator />
+                  <div>
+                    <h3 className="font-medium">Membership</h3>
+                    <div className="mt-2 grid grid-cols-2 gap-2">
+                      <div>
+                        <p className="text-sm text-muted-foreground">Members</p>
+                        <p className="font-medium">{members.length} of {group.max_members}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">Join Requests</p>
+                        <p className="font-medium">
+                          {group.allow_join_requests ? 'Allowed' : 'Disabled'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                  {members.length < group.max_members && (
+                    <div className="mt-4">
+                      <Button variant="outline" className="w-full" asChild>
+                        <Link to="#" onClick={() => setActiveTab('members')}>
+                          <UserPlus className="h-4 w-4 mr-2" />
+                          Invite Members
+                        </Link>
+                      </Button>
                     </div>
                   )}
-                </div>
-              </CardContent>
-            </Card>
-          </FadeIn>
-        </div>
-        
-        <Tabs value={currentTab} onValueChange={handleTabChange} className="mb-8">
-          <TabsList className="mb-6">
-            <TabsTrigger value="cycles">Cycles</TabsTrigger>
-            <TabsTrigger value="members">Members</TabsTrigger>
-            <TabsTrigger value="payments">Payment History</TabsTrigger>
-            <TabsTrigger value="settings">Settings</TabsTrigger>
-          </TabsList>
-          
-          <TabsContent value="cycles">
-            <CycleManagement groupId={group.id} />
+                </CardContent>
+              </Card>
+              
+              <Card>
+                <CardHeader>
+                  <CardTitle>Cycle Status</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {activeCycle ? (
+                    <div>
+                      <h3 className="font-medium">
+                        Active Cycle: #{activeCycle.cycle_number}
+                      </h3>
+                      <div className="mt-2 grid grid-cols-2 gap-2">
+                        <div>
+                          <p className="text-sm text-muted-foreground">Started</p>
+                          <p className="font-medium">
+                            {new Date(activeCycle.started_at || activeCycle.start_date).toLocaleDateString()}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-sm text-muted-foreground">Recipient</p>
+                          <p className="font-medium">
+                            {activeCycle.recipient?.name || "Not assigned"}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-sm text-muted-foreground">End Date</p>
+                          <p className="font-medium">
+                            {new Date(activeCycle.end_date).toLocaleDateString()}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-sm text-muted-foreground">Payment Date</p>
+                          <p className="font-medium">
+                            {new Date(activeCycle.payment_date).toLocaleDateString()}
+                          </p>
+                        </div>
+                      </div>
+                      <Button 
+                        variant="outline" 
+                        className="w-full mt-4"
+                        onClick={() => setActiveTab('cycles')}
+                      >
+                        <Calendar className="h-4 w-4 mr-2" />
+                        View Cycle Details
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center h-32">
+                      <XCircle className="h-8 w-8 text-muted-foreground mb-2" />
+                      <p className="text-muted-foreground">No active cycle</p>
+                      {isAdmin && upcomingCycles.length > 0 && (
+                        <Button 
+                          variant="outline" 
+                          className="mt-4"
+                          onClick={handleActivateNextCycle}
+                        >
+                          <Play className="h-4 w-4 mr-2" />
+                          Activate Next Cycle
+                        </Button>
+                      )}
+                    </div>
+                  )}
+                  <Separator />
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <h3 className="font-medium">Upcoming</h3>
+                      <p className="text-3xl font-bold mt-1">{upcomingCycles.length}</p>
+                    </div>
+                    <div>
+                      <h3 className="font-medium">Completed</h3>
+                      <p className="text-3xl font-bold mt-1">{completedCycles.length}</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
           </TabsContent>
           
           <TabsContent value="members">
-            <MembersList groupId={group.id} />
+            <MembersList groupId={group.id} isAdmin={isAdmin} />
+          </TabsContent>
+          
+          <TabsContent value="cycles">
+            <CycleManagement groupId={group.id} isAdmin={isAdmin} />
           </TabsContent>
           
           <TabsContent value="payments">
             <PaymentHistory groupId={group.id} />
           </TabsContent>
           
-          <TabsContent value="settings">
-            <GroupSettings groupId={group.id} />
-          </TabsContent>
-        </Tabs>
-        
-        <div className="flex justify-center">
-          <Button 
-            size="lg" 
-            className="px-8 gap-2"
-            onClick={handleMakePayment}
-            disabled={!hasActivePayment}
-          >
-            <DollarSign size={18} />
-            Make Payment
-          </Button>
+          {isAdmin && (
+            <TabsContent value="settings">
+              <GroupSettings groupId={group.id} initialData={group} />
+            </TabsContent>
+          )}
         </div>
-      </FadeIn>
-    </AppShell>
+      </Tabs>
+      
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={showConfirmDelete} onOpenChange={setShowConfirmDelete}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Group</DialogTitle>
+            <DialogDescription>
+              This action cannot be undone. This will permanently delete the
+              group and all associated data.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="outline">Cancel</Button>
+            </DialogClose>
+            <Button 
+              variant="destructive" 
+              onClick={handleDeleteGroup}
+            >
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 };
 

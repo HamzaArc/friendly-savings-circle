@@ -18,12 +18,14 @@ export const useCycles = (groupId: string) => {
   return useQuery({
     queryKey: ['cycles', groupId],
     queryFn: () => getCycles(groupId),
-    onError: (error: any) => {
-      toast({
-        title: "Error fetching cycles",
-        description: error.message,
-        variant: "destructive",
-      });
+    meta: {
+      onError: (error: any) => {
+        toast({
+          title: "Error fetching cycles",
+          description: error.message,
+          variant: "destructive",
+        });
+      }
     },
     enabled: !!groupId,
   });
@@ -36,12 +38,14 @@ export const useCycle = (cycleId: string) => {
   return useQuery({
     queryKey: ['cycles', 'detail', cycleId],
     queryFn: () => getCycle(cycleId),
-    onError: (error: any) => {
-      toast({
-        title: "Error fetching cycle",
-        description: error.message,
-        variant: "destructive",
-      });
+    meta: {
+      onError: (error: any) => {
+        toast({
+          title: "Error fetching cycle",
+          description: error.message,
+          variant: "destructive",
+        });
+      }
     },
     enabled: !!cycleId,
   });
@@ -156,12 +160,14 @@ export const useActiveCycle = (groupId: string) => {
   return useQuery({
     queryKey: ['cycles', 'active', groupId],
     queryFn: () => getActiveCycle(groupId),
-    onError: (error: any) => {
-      toast({
-        title: "Error fetching active cycle",
-        description: error.message,
-        variant: "destructive",
-      });
+    meta: {
+      onError: (error: any) => {
+        toast({
+          title: "Error fetching active cycle",
+          description: error.message,
+          variant: "destructive",
+        });
+      }
     },
     enabled: !!groupId,
   });

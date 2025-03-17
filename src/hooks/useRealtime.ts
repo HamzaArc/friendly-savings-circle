@@ -35,11 +35,11 @@ export const useRealtime = (
       realtimeChannel = realtimeChannel.on(
         'postgres_changes',
         {
-          event,
-          schema,
-          table,
-          filter,
-        },
+          event: event,
+          schema: schema,
+          table: table,
+          filter: filter,
+        } as any,
         (payload) => {
           console.log(`Realtime event received for ${table}:`, payload);
           
@@ -98,9 +98,3 @@ export const useRealtime = (
   
   return { channel };
 };
-
-// Example usage:
-// const { channel } = useRealtime([
-//   { table: 'groups', event: '*' },
-//   { table: 'cycles', event: 'UPDATE', callback: (payload) => console.log('Cycle updated:', payload) }
-// ]);

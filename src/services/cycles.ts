@@ -36,7 +36,10 @@ export const createCycle = async (cycleData: Omit<Cycle, 'id' | 'created_at'>): 
       description: `Cycle ${cycleData.cycle_number} has been created successfully.`
     });
     
-    return data;
+    return {
+      ...data,
+      status: data.status as 'upcoming' | 'active' | 'completed'
+    };
   } catch (error: any) {
     console.error('Error creating cycle:', error.message);
     toast({
@@ -60,7 +63,10 @@ export const getCycles = async (groupId: string): Promise<Cycle[]> => {
       .order('cycle_number', { ascending: true });
     
     if (error) throw error;
-    return data || [];
+    return data ? data.map(cycle => ({
+      ...cycle,
+      status: cycle.status as 'upcoming' | 'active' | 'completed'
+    })) : [];
   } catch (error: any) {
     console.error('Error fetching cycles:', error.message);
     return [];
@@ -80,7 +86,10 @@ export const getCycle = async (cycleId: string): Promise<Cycle | null> => {
       .single();
     
     if (error) throw error;
-    return data;
+    return data ? {
+      ...data,
+      status: data.status as 'upcoming' | 'active' | 'completed'
+    } : null;
   } catch (error: any) {
     console.error('Error fetching cycle:', error.message);
     return null;
@@ -103,7 +112,10 @@ export const updateCycle = async (cycleId: string, cycleData: Partial<Cycle>): P
       description: `Cycle ${data.cycle_number} has been updated successfully.`
     });
     
-    return data;
+    return {
+      ...data,
+      status: data.status as 'upcoming' | 'active' | 'completed'
+    };
   } catch (error: any) {
     console.error('Error updating cycle:', error.message);
     toast({
@@ -202,7 +214,10 @@ export const activateNextCycle = async (groupId: string): Promise<Cycle | null> 
         description: `Cycle ${nextCycle.cycle_number} is now active.`
       });
       
-      return data;
+      return data ? {
+        ...data,
+        status: data.status as 'upcoming' | 'active' | 'completed'
+      } : null;
     }
     
     return null;
@@ -231,7 +246,10 @@ export const getActiveCycle = async (groupId: string): Promise<Cycle | null> => 
       .single();
     
     if (error && error.code !== 'PGRST116') throw error;
-    return data;
+    return data ? {
+      ...data,
+      status: data.status as 'upcoming' | 'active' | 'completed'
+    } : null;
   } catch (error: any) {
     console.error('Error fetching active cycle:', error.message);
     return null;
