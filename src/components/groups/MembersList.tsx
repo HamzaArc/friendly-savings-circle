@@ -74,7 +74,7 @@ const MembersList = ({ groupId }: MembersListProps) => {
         
         setIsAdmin(adminCheck?.is_admin || false);
         
-        // Fetch members of this group
+        // Fetch members of this group with profile data
         const { data: memberships, error: membershipError } = await supabase
           .from('group_members')
           .select(`
@@ -91,15 +91,23 @@ const MembersList = ({ groupId }: MembersListProps) => {
           
         if (membershipError) throw membershipError;
         
-        const formattedMembers = memberships.map(membership => ({
-          id: membership.id,
-          name: membership.profiles?.name || 'Unknown User',
-          email: membership.profiles?.email || '',
-          isAdmin: membership.is_admin,
-          joinedAt: membership.joined_at
-        }));
-        
-        setMembers(formattedMembers);
+        // Process the memberships data to format for our component
+        if (memberships) {
+          const formattedMembers = memberships.map(membership => {
+            // Get profile data safely
+            const profile = membership.profiles as { name: string | null; email: string | null } | null;
+            
+            return {
+              id: membership.id,
+              name: profile?.name || 'Unknown User',
+              email: profile?.email || '',
+              isAdmin: membership.is_admin,
+              joinedAt: membership.joined_at
+            };
+          });
+          
+          setMembers(formattedMembers);
+        }
       } catch (error) {
         console.error('Error fetching members:', error);
         toast({
@@ -186,35 +194,17 @@ const MembersList = ({ groupId }: MembersListProps) => {
         
       if (addError) throw addError;
       
-      // Refresh the member list
-      const { data: newMember, error: fetchError } = await supabase
-        .from('group_members')
-        .select(`
-          id,
-          user_id,
-          is_admin,
-          joined_at,
-          profiles:user_id(
-            name,
-            email
-          )
-        `)
-        .eq('group_id', groupId)
-        .eq('user_id', userId)
-        .single();
-        
-      if (fetchError) throw fetchError;
-      
-      const formattedNewMember = {
-        id: newMember.id,
-        name: newMember.profiles?.name || data.name,
-        email: newMember.profiles?.email || data.email,
+      // Add new member to the list without refetching
+      const newMember: Member = {
+        id: crypto.randomUUID(), // Temporary ID until we refresh
+        name: data.name,
+        email: data.email,
         phone: data.phone,
-        isAdmin: newMember.is_admin,
-        joinedAt: newMember.joined_at
+        isAdmin: false,
+        joinedAt: new Date().toISOString()
       };
       
-      setMembers(prev => [...prev, formattedNewMember]);
+      setMembers(prev => [...prev, newMember]);
       
       toast({
         title: "Member added",
