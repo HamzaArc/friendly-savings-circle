@@ -37,23 +37,26 @@ const App = () => (
               <HelpButton />
             </div>
             <Routes>
-              <Route path="/" element={<Index />} />
+              {/* Public pages */}
+              <Route path="/" element={<AppShell><Index /></AppShell>} />
               <Route path="/login" element={<Login />} />
               <Route path="/register" element={<Register />} />
+              <Route path="/learn-more" element={<AppShell><LearnMore /></AppShell>} />
+              <Route path="/contact" element={<AppShell><Contact /></AppShell>} />
               <Route path="/onboarding" element={<OnboardingForm />} />
               
+              {/* Protected pages */}
               <Route element={<ProtectedRoute />}>
-                <Route path="/dashboard" element={<Dashboard />} />
-                <Route path="/user-dashboard" element={<UserDashboard />} />
-                <Route path="/create-group" element={<CreateGroup />} />
-                <Route path="/groups/:id" element={<GroupDetail />} />
-                <Route path="/reports" element={<Reports />} />
-                <Route path="/settings" element={<Settings />} />
-                <Route path="/groups" element={<Groups />} />
+                <Route path="/dashboard" element={<AppShell><Dashboard /></AppShell>} />
+                <Route path="/user-dashboard" element={<AppShell><UserDashboard /></AppShell>} />
+                <Route path="/create-group" element={<AppShell><CreateGroup /></AppShell>} />
+                <Route path="/groups/:id" element={<AppShell><GroupDetail /></AppShell>} />
+                <Route path="/reports" element={<AppShell><Reports /></AppShell>} />
+                <Route path="/settings" element={<AppShell><Settings /></AppShell>} />
+                <Route path="/groups" element={<AppShell><Groups /></AppShell>} />
               </Route>
               
-              <Route path="/learn-more" element={<LearnMore />} />
-              <Route path="/contact" element={<Contact />} />
+              {/* Catch-all page */}
               <Route path="*" element={<NotFound />} />
             </Routes>
           </BrowserRouter>

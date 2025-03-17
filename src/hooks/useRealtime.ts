@@ -29,24 +29,51 @@ export const useRealtime = (
   const queryClient = useQueryClient();
   
   useEffect(() => {
-    if (!options.enabled) return;
+    if (!options.enabled) {
+      // Clean up any existing subscription if disabled
+      if (channel) {
+        console.log('Cleaning up realtime subscription due to disabled option...');
+        supabase.removeChannel(channel);
+        setChannel(null);
+      }
+      return;
+    }
+    
+    // Filter out subscriptions with undefined filters
+    const validSubscriptions = subscriptions.filter(sub => 
+      sub.filter !== undefined || !('filter' in sub)
+    );
+    
+    if (validSubscriptions.length === 0) return;
     
     const channelId = `realtime-${Date.now()}`;
     let realtimeChannel = supabase.channel(channelId);
     
+    console.log(`Setting up realtime channel: ${channelId} with ${validSubscriptions.length} subscriptions`);
+    
     // Add all subscriptions to the channel
-    subscriptions.forEach((subscription) => {
+    validSubscriptions.forEach((subscription) => {
       const { table, schema = 'public', filter, event, callback } = subscription;
       
+      if (!table || !event) {
+        console.error('Invalid subscription config:', subscription);
+        return;
+      }
+      
       // Set up the postgres changes subscription
+      const config: any = {
+        event: event,
+        schema: schema,
+        table: table,
+      };
+      
+      if (filter) {
+        config.filter = filter;
+      }
+      
       realtimeChannel = realtimeChannel.on(
         'postgres_changes',
-        {
-          event: event,
-          schema: schema,
-          table: table,
-          filter: filter,
-        } as any,
+        config,
         (payload: RealtimePayload) => {
           console.log(`Realtime event received for ${table}:`, payload);
           
@@ -66,6 +93,8 @@ export const useRealtime = (
               queryClient.invalidateQueries({ queryKey: ['groups', payload.new.group_id, 'members'] });
               queryClient.invalidateQueries({ queryKey: ['groups', payload.new.group_id] });
             }
+            // Also invalidate the groups query to update any group membership changes
+            queryClient.invalidateQueries({ queryKey: ['groups'] });
           } else if (table === 'cycles') {
             if (payload.new && payload.new.group_id) {
               queryClient.invalidateQueries({ queryKey: ['cycles', payload.new.group_id] });
@@ -87,10 +116,12 @@ export const useRealtime = (
     
     // Subscribe to the channel
     realtimeChannel.subscribe((status) => {
+      console.log('Realtime subscription status:', status);
       if (status === 'SUBSCRIBED') {
         console.log('Subscribed to realtime channel:', channelId);
-      } else {
-        console.log('Realtime subscription status:', status);
+      } else if (status === 'CHANNEL_ERROR') {
+        console.error('Error with realtime subscription. Retrying...');
+        // You could implement retry logic here
       }
     });
     

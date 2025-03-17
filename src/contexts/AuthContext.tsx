@@ -1,118 +1,142 @@
 
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { Session, User } from '@supabase/supabase-js';
+import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { supabase } from '@/lib/supabase';
-import { useToast } from '@/hooks/use-toast';
-import { useQueryClient } from '@tanstack/react-query';
-import { Profile } from '@/services/users';
+import { Session, User } from '@supabase/supabase-js';
+import { toast } from '@/hooks/use-toast';
 
-type AuthContextType = {
+interface AuthContextType {
   session: Session | null;
   user: User | null;
-  profile: Profile | null;
+  profile: any | null;
   loading: boolean;
-  signUp: (email: string, password: string, userData: any) => Promise<void>;
   signIn: (email: string, password: string) => Promise<void>;
+  signUp: (email: string, password: string, metadata: any) => Promise<void>;
   signOut: () => Promise<void>;
-  updateProfile: (data: Partial<Profile>) => Promise<void>;
-};
+  refreshSession: () => Promise<void>;
+}
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
-  const [profile, setProfile] = useState<Profile | null>(null);
+  const [profile, setProfile] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
-  const { toast } = useToast();
-  const queryClient = useQueryClient();
 
+  // Initialize the auth state
   useEffect(() => {
-    const fetchSession = async () => {
+    const initializeAuth = async () => {
+      setLoading(true);
+      
       try {
-        const { data: { session } } = await supabase.auth.getSession();
-        setSession(session);
-        setUser(session?.user || null);
+        // Get the current session
+        const { data: { session: currentSession } } = await supabase.auth.getSession();
+        setSession(currentSession);
         
-        if (session?.user) {
-          const { data, error } = await supabase
+        if (currentSession?.user) {
+          setUser(currentSession.user);
+          
+          // Fetch user profile data
+          const { data: profileData } = await supabase
             .from('profiles')
             .select('*')
-            .eq('id', session.user.id)
+            .eq('id', currentSession.user.id)
             .single();
-          
-          if (error && error.code !== 'PGRST116') {
-            console.error('Error fetching profile:', error);
-          } else {
-            setProfile(data);
+            
+          if (profileData) {
+            setProfile(profileData);
           }
         }
       } catch (error) {
-        console.error('Error fetching session:', error);
+        console.error('Error initializing auth:', error);
       } finally {
         setLoading(false);
       }
-    };
-
-    fetchSession();
-
-    // Set up auth state change listener
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        console.log('Auth state changed:', event, session?.user?.id);
-        setSession(session);
-        setUser(session?.user || null);
-        
-        if (session?.user) {
-          const { data, error } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', session.user.id)
-            .single();
+      
+      // Set up auth state change listener
+      const { data: { subscription } } = supabase.auth.onAuthStateChange(
+        async (event, newSession) => {
+          console.log('Auth state changed:', event);
+          setSession(newSession);
+          setUser(newSession?.user || null);
           
-          if (error && error.code !== 'PGRST116') {
-            console.error('Error fetching profile:', error);
+          if (newSession?.user) {
+            // Fetch user profile data on auth change
+            const { data: profileData } = await supabase
+              .from('profiles')
+              .select('*')
+              .eq('id', newSession.user.id)
+              .single();
+              
+            if (profileData) {
+              setProfile(profileData);
+            }
           } else {
-            setProfile(data);
+            setProfile(null);
           }
-        } else {
-          setProfile(null);
         }
-        
-        // Invalidate all queries when auth state changes
-        if (event === 'SIGNED_IN' || event === 'SIGNED_OUT') {
-          queryClient.invalidateQueries();
-        }
-      }
-    );
-
-    return () => {
-      subscription.unsubscribe();
+      );
+      
+      return () => {
+        subscription.unsubscribe();
+      };
     };
-  }, [queryClient]);
+    
+    initializeAuth();
+  }, []);
 
-  const signUp = async (email: string, password: string, userData: any) => {
+  // Sign in with email and password
+  const signIn = async (email: string, password: string) => {
+    setLoading(true);
     try {
-      setLoading(true);
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password
+      });
+      
+      if (error) throw error;
+      
+      toast({
+        title: "Signed in successfully",
+        description: "Welcome back!",
+      });
+      
+    } catch (error: any) {
+      console.error('Error signing in:', error.message);
+      toast({
+        title: "Sign in failed",
+        description: error.message,
+        variant: "destructive",
+      });
+      throw error;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Sign up with email and password
+  const signUp = async (email: string, password: string, metadata: any) => {
+    setLoading(true);
+    try {
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
-          data: userData,
+          data: metadata,
         },
       });
-
+      
       if (error) throw error;
-
-      // The profile will be created automatically via the database trigger
-
+      
       toast({
-        title: "Account created!",
-        description: "Welcome to Tontine!",
+        title: "Account created",
+        description: "Welcome to the app!",
       });
+      
     } catch (error: any) {
+      console.error('Error signing up:', error.message);
       toast({
-        title: "Error creating account",
+        title: "Sign up failed",
         description: error.message,
         variant: "destructive",
       });
@@ -122,103 +146,53 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const signIn = async (email: string, password: string) => {
-    try {
-      setLoading(true);
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-
-      if (error) throw error;
-
-      toast({
-        title: "Welcome back!",
-        description: "You have successfully signed in.",
-      });
-    } catch (error: any) {
-      console.error("Sign in error:", error);
-      toast({
-        title: "Error signing in",
-        description: error.message,
-        variant: "destructive",
-      });
-      throw error;
-    } finally {
-      setLoading(false);
-    }
-  };
-
+  // Sign out
   const signOut = async () => {
     try {
-      setLoading(true);
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
       
       toast({
-        title: "Signed out",
-        description: "You have been successfully signed out.",
+        title: "Signed out successfully",
       });
+      
     } catch (error: any) {
+      console.error('Error signing out:', error.message);
       toast({
-        title: "Error signing out",
+        title: "Sign out failed",
         description: error.message,
         variant: "destructive",
       });
-    } finally {
-      setLoading(false);
     }
   };
 
-  const updateProfile = async (data: Partial<Profile>) => {
+  // Refresh the session
+  const refreshSession = async () => {
     try {
-      if (!user) throw new Error("No user logged in");
-      
-      setLoading(true);
-      const { error } = await supabase
-        .from('profiles')
-        .update(data)
-        .eq('id', user.id);
-      
-      if (error) throw error;
-      
-      // Refresh profile data
-      const { data: profileData, error: profileError } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', user.id)
-        .single();
-      
-      if (profileError) throw profileError;
-      setProfile(profileData);
-      
-      toast({
-        title: "Profile updated",
-        description: "Your profile has been successfully updated.",
-      });
-    } catch (error: any) {
-      toast({
-        title: "Error updating profile",
-        description: error.message,
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
+      const { data: { session: refreshedSession } } = await supabase.auth.refreshSession();
+      setSession(refreshedSession);
+      setUser(refreshedSession?.user || null);
+    } catch (error) {
+      console.error('Error refreshing session:', error);
     }
   };
 
-  const value = {
-    session,
-    user,
-    profile,
-    loading,
-    signUp,
-    signIn,
-    signOut,
-    updateProfile,
-  };
-
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider
+      value={{
+        session,
+        user,
+        profile,
+        loading,
+        signIn,
+        signUp,
+        signOut,
+        refreshSession,
+      }}
+    >
+      {children}
+    </AuthContext.Provider>
+  );
 };
 
 export const useAuth = () => {

@@ -1,5 +1,5 @@
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { PlusCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -10,16 +10,49 @@ import GroupCard from '@/components/dashboard/GroupCard';
 import EmptyState from '@/components/dashboard/EmptyState';
 import FadeIn from '@/components/ui/FadeIn';
 import { useAuth } from '@/contexts/AuthContext';
+import { useGroupMembers } from '@/hooks/useGroups';
 
 const Dashboard = () => {
   const { data: groups = [], isLoading, isError } = useGroups();
   const { user } = useAuth();
+  const [membersCount, setMembersCount] = useState<{[key: string]: number}>({});
 
-  // Set up realtime subscriptions
+  // Set up realtime subscriptions only if user is logged in
   useRealtime([
     { table: 'groups', event: '*' },
-    { table: 'group_members', event: '*', filter: `user_id=eq.${user?.id}` }
+    { table: 'group_members', event: '*', filter: user?.id ? `user_id=eq.${user.id}` : undefined }
   ], { enabled: !!user?.id });
+
+  // Fetch members count for each group
+  useEffect(() => {
+    if (!groups || groups.length === 0) return;
+    
+    const fetchMembersCount = async () => {
+      const counts: {[key: string]: number} = {};
+      
+      for (const group of groups) {
+        try {
+          const { data: members } = await useGroupMembers(group.id);
+          counts[group.id] = members?.length || 0;
+        } catch (error) {
+          console.error(`Error fetching members for group ${group.id}:`, error);
+          counts[group.id] = 0;
+        }
+      }
+      
+      setMembersCount(counts);
+    };
+    
+    fetchMembersCount();
+  }, [groups]);
+
+  // Calculate next payment date (placeholder logic - should be replaced with actual calculation)
+  const getNextPaymentDate = (group: any) => {
+    // This is a placeholder - in a real app, this would be calculated based on contribution frequency
+    const today = new Date();
+    const nextMonth = new Date(today.setMonth(today.getMonth() + 1));
+    return nextMonth.toISOString().split('T')[0]; // Format as YYYY-MM-DD
+  };
 
   if (isLoading) {
     return (
@@ -89,6 +122,7 @@ const Dashboard = () => {
             {groups.map((group) => {
               const currentCycle = group.current_cycle || 0;
               const totalCycles = group.total_cycles || 0;
+              const nextPaymentDate = getNextPaymentDate(group);
               
               return (
                 <GroupCard
@@ -96,13 +130,13 @@ const Dashboard = () => {
                   id={group.id}
                   name={group.name}
                   description={group.description || ""}
-                  members={0} // Use 0 as default for members count
+                  members={membersCount[group.id] || 0}
                   totalMembers={group.max_members || 0}
                   contributionAmount={group.contribution_amount}
                   contributionFrequency={group.contribution_frequency}
                   currentCycle={currentCycle}
                   totalCycles={totalCycles}
-                  nextPaymentDate="2025-04-15" // Provide a default date
+                  nextPaymentDate={nextPaymentDate}
                 />
               );
             })}
