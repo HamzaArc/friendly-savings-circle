@@ -13,6 +13,13 @@ type RealtimeSubscription = {
   callback?: (payload: any) => void;
 };
 
+// Type definition for the payload
+type RealtimePayload = {
+  new: Record<string, any> | null;
+  old: Record<string, any> | null;
+  [key: string]: any;
+};
+
 export const useRealtime = (
   subscriptions: RealtimeSubscription[],
   options: { enabled?: boolean } = { enabled: true }
@@ -40,7 +47,7 @@ export const useRealtime = (
           table: table,
           filter: filter,
         } as any,
-        (payload) => {
+        (payload: RealtimePayload) => {
           console.log(`Realtime event received for ${table}:`, payload);
           
           // Execute the callback if provided
@@ -51,24 +58,24 @@ export const useRealtime = (
           // Invalidate related queries
           if (table === 'groups') {
             queryClient.invalidateQueries({ queryKey: ['groups'] });
-            if (payload.new?.id) {
+            if (payload.new && payload.new.id) {
               queryClient.invalidateQueries({ queryKey: ['groups', payload.new.id] });
             }
           } else if (table === 'group_members') {
-            if (payload.new?.group_id) {
+            if (payload.new && payload.new.group_id) {
               queryClient.invalidateQueries({ queryKey: ['groups', payload.new.group_id, 'members'] });
               queryClient.invalidateQueries({ queryKey: ['groups', payload.new.group_id] });
             }
           } else if (table === 'cycles') {
-            if (payload.new?.group_id) {
+            if (payload.new && payload.new.group_id) {
               queryClient.invalidateQueries({ queryKey: ['cycles', payload.new.group_id] });
             }
-            if (payload.new?.id) {
+            if (payload.new && payload.new.id) {
               queryClient.invalidateQueries({ queryKey: ['cycles', 'detail', payload.new.id] });
             }
           } else if (table === 'payments') {
             queryClient.invalidateQueries({ queryKey: ['payments'] });
-            if (payload.new?.cycle_id) {
+            if (payload.new && payload.new.cycle_id) {
               queryClient.invalidateQueries({ queryKey: ['cycles', 'detail', payload.new.cycle_id] });
             }
           } else if (table === 'notifications') {

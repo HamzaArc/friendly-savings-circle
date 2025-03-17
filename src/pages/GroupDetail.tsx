@@ -144,7 +144,7 @@ const GroupDetail = () => {
         
         {isAdmin && (
           <div className="mt-4 md:mt-0 flex gap-2">
-            <GroupInvite groupId={id || ''} />
+            <GroupInvite groupId={id || ''} groupName={group.name} />
             
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -328,11 +328,11 @@ const GroupDetail = () => {
           </TabsContent>
           
           <TabsContent value="members">
-            <MembersList groupId={group.id} isAdmin={isAdmin} />
+            <MembersList groupId={group.id} />
           </TabsContent>
           
           <TabsContent value="cycles">
-            <CycleManagement groupId={group.id} isAdmin={isAdmin} />
+            <CycleManagement groupId={group.id} />
           </TabsContent>
           
           <TabsContent value="payments">
@@ -341,7 +341,7 @@ const GroupDetail = () => {
           
           {isAdmin && (
             <TabsContent value="settings">
-              <GroupSettings groupId={group.id} initialData={group} />
+              <GroupSettings groupId={group.id} />
             </TabsContent>
           )}
         </div>

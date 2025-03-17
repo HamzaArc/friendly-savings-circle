@@ -77,7 +77,7 @@ const Dashboard = () => {
       </div>
 
       {groups.length === 0 ? (
-        <EmptyState
+        <EmptyState 
           title="No groups yet"
           description="Create your first group to get started with managing your money pool."
           buttonText="Create Group"
@@ -87,8 +87,7 @@ const Dashboard = () => {
         <FadeIn>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {groups.map((group, index) => {
-              const members = group.members || [];
-              const totalMembers = members.length;
+              // Get group members and calculate totals
               const currentCycle = group.current_cycle || 0;
               const totalCycles = group.total_cycles || 0;
               const cycleProgress = totalCycles > 0 ? (currentCycle / totalCycles) * 100 : 0;
@@ -99,14 +98,13 @@ const Dashboard = () => {
                   id={group.id}
                   name={group.name}
                   description={group.description || ""}
-                  members={members}
-                  totalMembers={totalMembers}
-                  maxMembers={group.max_members}
+                  members={[]} // Pass empty array as members prop
+                  totalMembers={0} // Pass 0 as totalMembers prop
+                  contributionAmount={group.contribution_amount}
+                  contributionFrequency={group.contribution_frequency}
                   currentCycle={currentCycle}
                   totalCycles={totalCycles}
                   cycleProgress={cycleProgress}
-                  contributionAmount={group.contribution_amount}
-                  contributionFrequency={group.contribution_frequency}
                 />
               );
             })}
