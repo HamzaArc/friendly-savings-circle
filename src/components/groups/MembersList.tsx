@@ -81,21 +81,36 @@ const MembersList = ({ groupId }: MembersListProps) => {
             id,
             user_id,
             is_admin,
-            joined_at,
-            profiles:user_id(
-              name,
-              email
-            )
+            joined_at
           `)
           .eq('group_id', groupId);
           
         if (membershipError) throw membershipError;
         
-        // Process the memberships data to format for our component
-        if (memberships) {
+        // Process the memberships data and fetch profile info separately
+        if (memberships && memberships.length > 0) {
+          // Get all user IDs
+          const userIds = memberships.map(membership => membership.user_id);
+          
+          // Fetch profiles for these users
+          const { data: profiles, error: profilesError } = await supabase
+            .from('profiles')
+            .select('id, name, email')
+            .in('id', userIds);
+            
+          if (profilesError) throw profilesError;
+          
+          // Create a map of user IDs to profiles for easier lookup
+          const profileMap = new Map();
+          if (profiles) {
+            profiles.forEach(profile => {
+              profileMap.set(profile.id, profile);
+            });
+          }
+          
+          // Format members with profile data
           const formattedMembers = memberships.map(membership => {
-            // Get profile data safely
-            const profile = membership.profiles as { name: string | null; email: string | null } | null;
+            const profile = profileMap.get(membership.user_id);
             
             return {
               id: membership.id,
@@ -107,6 +122,8 @@ const MembersList = ({ groupId }: MembersListProps) => {
           });
           
           setMembers(formattedMembers);
+        } else {
+          setMembers([]);
         }
       } catch (error) {
         console.error('Error fetching members:', error);
