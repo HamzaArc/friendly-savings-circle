@@ -53,31 +53,6 @@ const EventCalendar = ({
     return "";
   };
 
-  // Define dayStyles function separately to properly type it
-  const getDayStyle = (date: Date) => {
-    const className = getDayClassName(date);
-    if (className.includes("bg-amber-100")) {
-      return { 
-        backgroundColor: "#fef3c7",
-        color: "#92400e",
-        fontWeight: "500"
-      };
-    } else if (className.includes("bg-blue-100")) {
-      return { 
-        backgroundColor: "#dbeafe",
-        color: "#1e3a8a",
-        fontWeight: "500"
-      };
-    } else if (className.includes("bg-green-100")) {
-      return { 
-        backgroundColor: "#dcfce7",
-        color: "#14532d",
-        fontWeight: "500"
-      };
-    }
-    return {};
-  };
-
   return (
     <div>
       <div className="mb-4">
@@ -137,9 +112,6 @@ const EventCalendar = ({
         classNames={{
           day_selected: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground",
           day: "custom-day-class", 
-        }}
-        styles={{
-          day: (date) => getDayStyle(date)
         }}
       />
       
