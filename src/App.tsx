@@ -13,6 +13,11 @@ import GroupDetail from "./pages/GroupDetail";
 import NotFound from "./pages/NotFound";
 import OnboardingForm from "./components/onboarding/OnboardingForm";
 import AppShell from "./components/layout/AppShell";
+import Reports from "./pages/Reports";
+import Settings from "./pages/Settings";
+import LearnMore from "./pages/LearnMore";
+import Contact from "./pages/Contact";
+import Groups from "./pages/Groups";
 
 const queryClient = new QueryClient();
 
@@ -52,6 +57,11 @@ const App = () => (
           <Route path="/create-group" element={<CreateGroup />} />
           <Route path="/groups/:id" element={<GroupDetail />} />
           <Route path="/onboarding" element={<Onboarding />} />
+          <Route path="/reports" element={<Reports />} />
+          <Route path="/settings" element={<Settings />} />
+          <Route path="/learn-more" element={<LearnMore />} />
+          <Route path="/contact" element={<Contact />} />
+          <Route path="/groups" element={<Groups />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>

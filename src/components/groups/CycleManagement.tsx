@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -95,7 +94,6 @@ const CycleManagement = ({ groupId }: CycleManagementProps) => {
   });
   
   useEffect(() => {
-    // Load cycles, members and current user from localStorage
     setTimeout(() => {
       const storedGroups = JSON.parse(localStorage.getItem("groups") || "[]");
       const currentGroup = storedGroups.find((g: any) => g.id === groupId);
@@ -108,9 +106,8 @@ const CycleManagement = ({ groupId }: CycleManagementProps) => {
         storedCycles = currentGroup.cycles || [];
       }
       
-      // Get current user
       const user = JSON.parse(localStorage.getItem("user") || "{}");
-      setCurrentUserId(user.id || "1"); // Default to "1" if not found
+      setCurrentUserId(user.id || "1");
       
       setMembers(storedMembers);
       setCycles(storedCycles);
@@ -119,11 +116,9 @@ const CycleManagement = ({ groupId }: CycleManagementProps) => {
   }, [groupId]);
   
   const saveCycles = (cyclesList: Cycle[]) => {
-    // Save cycles to localStorage
     const storedGroups = JSON.parse(localStorage.getItem("groups") || "[]");
     const updatedGroups = storedGroups.map((group: any) => {
       if (group.id === groupId) {
-        // Find the active cycle, if any
         const activeCycle = cyclesList.find(cycle => cycle.status === "active");
         
         return {
@@ -151,12 +146,10 @@ const CycleManagement = ({ groupId }: CycleManagementProps) => {
       return;
     }
     
-    // Calculate 30 days from the start date for the end date
     const startDate = new Date(data.startDate);
     const endDate = new Date(startDate);
     endDate.setDate(endDate.getDate() + 30);
     
-    // Create payments for each member
     const payments: CyclePayment[] = members.map(member => ({
       memberId: member.id,
       memberName: member.name,
@@ -178,7 +171,6 @@ const CycleManagement = ({ groupId }: CycleManagementProps) => {
     setCycles(updatedCycles);
     saveCycles(updatedCycles);
     
-    // Create notification for cycle start if it's active
     if (newCycle.status === "active") {
       addNotification({
         groupId,
@@ -204,7 +196,6 @@ const CycleManagement = ({ groupId }: CycleManagementProps) => {
   };
   
   const markPayment = (cycleId: string, memberId: string, status: "pending" | "paid") => {
-    // Check if user has permission to mark payments
     if (!canRecordPayments(cycleId)) {
       toast({
         title: "Permission denied",
@@ -238,7 +229,6 @@ const CycleManagement = ({ groupId }: CycleManagementProps) => {
     setCycles(updatedCycles);
     saveCycles(updatedCycles);
     
-    // Update the selected cycle for the dialog
     if (selectedCycle && selectedCycle.id === cycleId) {
       const updatedCycle = updatedCycles.find(c => c.id === cycleId) || null;
       setSelectedCycle(updatedCycle);
@@ -265,7 +255,6 @@ const CycleManagement = ({ groupId }: CycleManagementProps) => {
   };
   
   const getNextRecipient = () => {
-    // Get members who haven't been recipients yet
     const recipientIds = cycles.map(cycle => cycle.recipientId);
     const availableMembers = members.filter(member => !recipientIds.includes(member.id));
     
@@ -273,7 +262,6 @@ const CycleManagement = ({ groupId }: CycleManagementProps) => {
       return availableMembers[0];
     }
     
-    // If all members have been recipients, suggest the member who has been a recipient the longest time ago
     const sortedCycles = [...cycles].sort((a, b) => 
       new Date(a.startDate).getTime() - new Date(b.startDate).getTime()
     );
@@ -294,12 +282,10 @@ const CycleManagement = ({ groupId }: CycleManagementProps) => {
     
     const updatedCycles = cycles.map(cycle => {
       if (cycle.id === cycleId) {
-        return { ...cycle, status: "completed" };
+        return { ...cycle, status: "completed" as "completed" | "active" | "upcoming" };
       }
       
-      // Activate the next upcoming cycle if this one is completed
       if (cycle.status === "upcoming" && cycles.find(c => c.id === cycleId)?.status === "active") {
-        // Create notification about new active cycle
         addNotification({
           groupId,
           cycleId: cycle.id,
@@ -308,7 +294,7 @@ const CycleManagement = ({ groupId }: CycleManagementProps) => {
           type: "cycle_started"
         });
         
-        return { ...cycle, status: "active" };
+        return { ...cycle, status: "active" as "completed" | "active" | "upcoming" };
       }
       
       return cycle;
@@ -318,7 +304,6 @@ const CycleManagement = ({ groupId }: CycleManagementProps) => {
     saveCycles(updatedCycles);
     setOpenCycleDetails(false);
     
-    // Create notification for cycle completion
     const completedCycle = cycles.find(c => c.id === cycleId);
     if (completedCycle) {
       addNotification({
@@ -336,17 +321,13 @@ const CycleManagement = ({ groupId }: CycleManagementProps) => {
     });
   };
   
-  // Check if current user is admin or active recipient
   const canRecordPayments = (cycleId: string) => {
-    // Find current user in members list
     const currentUser = members.find(m => m.id === currentUserId);
     
-    // If user is admin, they can always record payments
     if (currentUser?.isAdmin) {
       return true;
     }
     
-    // If user is the recipient of the active cycle, they can record payments
     const activeCycle = cycles.find(c => c.id === cycleId);
     if (activeCycle && activeCycle.status === "active" && activeCycle.recipientId === currentUserId) {
       return true;
@@ -377,7 +358,6 @@ const CycleManagement = ({ groupId }: CycleManagementProps) => {
       return;
     }
     
-    // Get member and cycle info
     const member = members.find(m => m.id === memberId);
     const cycle = cycles.find(c => c.id === cycleId);
     
@@ -390,7 +370,6 @@ const CycleManagement = ({ groupId }: CycleManagementProps) => {
       return;
     }
     
-    // Create notification
     addNotification({
       groupId,
       cycleId,
@@ -415,7 +394,6 @@ const CycleManagement = ({ groupId }: CycleManagementProps) => {
     message: string;
     type: "payment_reminder" | "cycle_completed" | "cycle_started";
   }) => {
-    // Create notification
     const newNotification: Notification = {
       id: Date.now().toString(),
       groupId,
@@ -427,10 +405,7 @@ const CycleManagement = ({ groupId }: CycleManagementProps) => {
       createdAt: new Date().toISOString()
     };
     
-    // Get existing notifications
     const notifications: Notification[] = JSON.parse(localStorage.getItem("notifications") || "[]");
-    
-    // Add new notification
     const updatedNotifications = [...notifications, newNotification];
     localStorage.setItem("notifications", JSON.stringify(updatedNotifications));
   };
@@ -533,7 +508,6 @@ const CycleManagement = ({ groupId }: CycleManagementProps) => {
         </Card>
       )}
       
-      {/* Add Cycle Dialog */}
       <Dialog open={openAddCycle} onOpenChange={setOpenAddCycle}>
         <DialogContent>
           <DialogHeader>
@@ -601,7 +575,6 @@ const CycleManagement = ({ groupId }: CycleManagementProps) => {
         </DialogContent>
       </Dialog>
       
-      {/* Cycle Details Dialog */}
       {selectedCycle && (
         <Dialog open={openCycleDetails} onOpenChange={setOpenCycleDetails}>
           <DialogContent className="max-w-3xl">
@@ -756,7 +729,6 @@ const CycleManagement = ({ groupId }: CycleManagementProps) => {
         </Dialog>
       )}
       
-      {/* Send Reminder Dialog */}
       <Dialog open={openSendReminder} onOpenChange={setOpenSendReminder}>
         <DialogContent>
           <DialogHeader>
@@ -790,3 +762,4 @@ const CycleManagement = ({ groupId }: CycleManagementProps) => {
 };
 
 export default CycleManagement;
+
