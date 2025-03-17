@@ -225,17 +225,17 @@ const NotificationCenter = () => {
               {notifications.map((notification) => (
                 <div 
                   key={notification.id}
-                  className={`p-3 text-sm hover:bg-muted/50 ${!notification.isRead ? 'bg-muted/20' : ''}`}
+                  className={`p-3 text-sm hover:bg-muted/50 ${!notification.is_read ? 'bg-muted/20' : ''}`}
                 >
                   <div className="flex justify-between items-start mb-1">
                     <div className="flex items-center gap-2">
                       {getNotificationIcon(notification.type)}
                       <span className="text-xs text-muted-foreground">
-                        {formatDate(notification.createdAt)}
+                        {formatDate(notification.created_at)}
                       </span>
                     </div>
                     <div className="flex items-center gap-1">
-                      {!notification.isRead && (
+                      {!notification.is_read && (
                         <Button 
                           variant="ghost" 
                           size="icon" 

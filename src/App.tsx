@@ -1,5 +1,4 @@
-import { useEffect } from 'react';
-import { checkDatabaseConnectivity } from './utils/initDatabase';
+
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -7,6 +6,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
+import { checkDatabaseConnectivity } from './utils/initDatabase';
 import Index from "./pages/Index";
 import Dashboard from "./pages/Dashboard";
 import UserDashboard from "./pages/UserDashboard";
